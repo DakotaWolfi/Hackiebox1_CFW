@@ -1,0 +1,16 @@
+# Code style of the Revvox projects (teddycloud): the "Visual Studio"
+# fallback style that VS Code applies on save, with braces around every
+# body. Own code only; third_party/ and src/fatfs/ are not formatted.
+BasedOnStyle: LLVM
+UseTab: Never
+IndentWidth: 4
+TabWidth: 4
+BreakBeforeBraces: Allman
+AllowShortIfStatementsOnASingleLine: false
+IndentCaseLabels: false
+ColumnLimit: 0
+AccessModifierOffset: -4
+NamespaceIndentation: All
+FixNamespaceComments: false
+InsertBraces: true
+SortIncludes: Never

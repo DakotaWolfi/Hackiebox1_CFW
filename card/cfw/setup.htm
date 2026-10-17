@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<!--
+  Setup page of the CC3200 custom firmware. Copy this file to
+  the SD card as /cfw/setup.htm; in setup mode the box serves it at
+  http://192.168.1.1/ and http://toniebox.start/. Without it the box keeps
+  the vendor setup page. Interface of the box (src/page.c):
+    GET  /scan.txt     one line per network: security digit, space, SSID in hex
+                       (escaped: \" and \\)
+    GET  /config.txt   the file /cfw/config.txt
+    GET  /lang.txt     the box language, one digit 0 to 3
+    POST /lang.txt     a new box language alone, stored at once
+    POST /wifi         form fields named as the setup tokens of the vendor page (__SL_P_...)
+    POST /config.txt   the new /cfw/config.txt
+    POST /cert/0|1|2   private.der, client.der, ca.der (raw body)
+    POST /reset/wifi|content|server
+                       delete the Wi-Fi networks; the contents, tag and box
+                       settings; the server configuration with its CA
+  Answers: "ok" or a word for the reason (see msg below).
+  SPDX-License-Identifier: GPL-3.0-or-later
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="cfw-page-version" content="0.1">
+<meta name="cfw-page-requires" content="CFW_0.0.1">
+<title>Toniebox setup</title>
+<link rel="icon" href="data:,">
+<style>
+:root { --bg: #f6f6f4; --fg: #1d1d1b; --card: #fff; --line: #d8d8d2; --acc: #c8102e; --ok: #1b7a3a; --err: #b00020; }
+@media (prefers-color-scheme: dark) { :root { --bg: #18181a; --fg: #ececea; --card: #232326; --line: #3a3a3e; --acc: #ff5a6e; --ok: #5fd08a; --err: #ff7a85; } }
+* { box-sizing: border-box; }
+body { margin: 0; padding: 16px; background: var(--bg); color: var(--fg); font: 16px/1.4 system-ui, sans-serif; }
+main { max-width: 32rem; margin: 0 auto; }
+h1 { font-size: 1.4rem; margin: 0 0 1rem; }
+section { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 1rem; margin-bottom: 1rem; }
+h2 { font-size: 1.1rem; margin: 0 0 .75rem; }
+label { display: block; margin: .5rem 0 .2rem; font-size: .9rem; }
+input, select, button { width: 100%; font: inherit; padding: .5rem; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--fg); }
+button { margin-top: .75rem; background: var(--acc); color: #fff; border: 0; cursor: pointer; }
+.row { display: flex; gap: .5rem; align-items: end; }
+.row > :first-child { flex: 1; }
+.row button { width: auto; margin-top: 0; }
+.msg { min-height: 1.4em; margin: .5rem 0 0; font-size: .9rem; }
+.ok { color: var(--ok); } .err { color: var(--err); }
+.note { font-size: .85rem; opacity: .8; }
+button.danger { background: transparent; color: var(--err); border: 1px solid var(--err); }
+</style>
+</head>
+<body>
+<main>
+<h1 data-t="title">Toniebox setup</h1>
+
+<section>
+<h2 data-t="lang">Language</h2>
+<label for="lang" data-t="langl">Language of the box (sound prompts and this page)</label>
+<select id="lang"><option value="1">Deutsch</option><option value="0">English (UK)</option><option value="2">English (US)</option><option value="3">Français</option></select>
+<button id="lsave" data-t="lsave">Save language</button>
+<p class="msg" id="lmsg"></p>
+</section>
+
+<section>
+<h2 data-t="wifi">Wi-Fi</h2>
+<label for="net" data-t="net">Network</label>
+<div class="row"><select id="net"></select><button type="button" id="rescan" data-t="rescan">Reload</button></div>
+<label for="ssid" data-t="ssid">Network name (SSID)</label>
+<input id="ssid" maxlength="32" autocomplete="off">
+<label for="key" data-t="key">Password</label>
+<input id="key" type="password" maxlength="64" autocomplete="off">
+<button id="join" data-t="join">Connect</button>
+<p class="msg" id="wmsg"></p>
+</section>
+
+<section>
+<h2 data-t="server">Server</h2>
+<label for="host" data-t="host">Host (IP address or DNS name; empty: no server)</label>
+<input id="host" maxlength="65" autocomplete="off" placeholder="teddycloud.local">
+<label for="port" data-t="port">Port</label>
+<input id="port" inputmode="numeric" maxlength="5" placeholder="443">
+<button id="save" data-t="save">Save</button>
+<p class="msg" id="smsg"></p>
+</section>
+
+<section>
+<h2 data-t="certs">Certificates</h2>
+<label for="c2">CA (ca.der)</label><input id="c2" type="file" accept=".der">
+<label for="c1" data-t="c1">Client certificate (client.der)</label><input id="c1" type="file" accept=".der">
+<label for="c0" data-t="c0">Private key (private.der)</label><input id="c0" type="file" accept=".der">
+<button id="up" data-t="up">Upload</button>
+<p class="msg" id="cmsg"></p>
+</section>
+
+<section>
+<h2 data-t="reset">Delete</h2>
+<button class="danger" id="rwifi" data-t="rwifi">Delete all stored Wi-Fi networks</button>
+<button class="danger" id="rcontent" data-t="rcontent">Delete all local contents, tonie settings and box settings</button>
+<button class="danger" id="rserver" data-t="rserver">Delete the server settings</button>
+<p class="msg" id="rmsg"></p>
+</section>
+
+<p class="note" data-t="note">The language is stored at once and is also sent with Connect.
+Server and certificate settings take effect at the next start of the box.
+The Wi-Fi settings are used at once: the box closes its access point and joins the network.</p>
+<p class="note" id="pver"></p>
+</main>
+
+<script>
+"use strict";
+const $ = id => document.getElementById(id);
+const T = {
+  en: {
+    reset: "Delete", rwifi: "Delete all stored Wi-Fi networks", rcontent: "Delete all local contents, tonie settings and box settings", rserver: "Delete the server settings",
+    qwifi: "Delete all stored Wi-Fi networks? The box then only joins a network that is set up again here.",
+    qcontent: "Delete all audio contents on the card (not the sound prompts), the tonie settings and the box settings? Contents are downloaded again when a figure is placed.",
+    qserver: "WARNING: this deletes the server address, the port and the CA file of the server (its name stays). Without them the box reaches no server until they are set again here. Delete?",
+    done: "Deleted.", rnext: "Deleted; takes effect at the next start.",
+    title: "Toniebox setup", lang: "Language", langl: "Language of the box (sound prompts and this page)", lsave: "Save language",
+    wifi: "Wi-Fi", net: "Network", rescan: "Reload", ssid: "Network name (SSID)", key: "Password", join: "Connect",
+    server: "Server", host: "Host (IP address or DNS name; empty: no server)", port: "Port", save: "Save",
+    certs: "Certificates", c1: "Client certificate (client.der)", c0: "Private key (private.der)", up: "Upload",
+    note: "The language is stored at once and is also sent with Connect. Server and certificate settings take effect at the next start of the box. The Wi-Fi settings are used at once: the box closes its access point and joins the network.",
+    ok: "Saved; takes effect at the next start.", bad: "The box did not understand the request.",
+    hostbad: "The host is not a valid IP address or DNS name.", vendor: "A server of the vendor cannot be set.",
+    portbad: "The port must be 1 to 65535.", long: "/cfw/config.txt would be longer than 1024 bytes.",
+    card: "The SD card could not be written.", der: "Not a single DER element of 2 to 4096 bytes; not written.",
+    flash: "Writing to the flash failed.", choose: "Choose a network ...", none: "No networks found",
+    ssidlen: "Enter a network name of 1 to 32 bytes.", keylen: "The password can have at most 63 bytes.",
+    joining: "The box now connects (blue blinking); this access point closes.", lstored: "Language stored; used from now on.",
+    nothing: " Nothing was stored.", written: "written to the flash", nextstart: ". Used from the next start.", nofile: "Choose a file first.",
+    pver: "Setup page", fw: "firmware", needs: "this page needs at least"
+  },
+  de: {
+    reset: "Löschen", rwifi: "Alle gespeicherten WLAN-Netze löschen", rcontent: "Alle lokalen Audioinhalte, Tonie- und Box-Einstellungen löschen", rserver: "Server-Einstellungen löschen",
+    qwifi: "Alle gespeicherten WLAN-Netze löschen? Die Box verbindet sich danach nur mit einem Netz, das hier neu eingerichtet wird.",
+    qcontent: "Alle Audioinhalte auf der Karte (nicht die Ansagen), die Tonie-Einstellungen und die Box-Einstellungen löschen? Inhalte werden beim Aufstellen einer Figur neu geladen.",
+    qserver: "ACHTUNG: Das löscht die Server-Adresse, den Port und die CA-Datei des Servers (ihr Name bleibt). Ohne sie erreicht die Box keinen Server mehr, bis sie hier neu eingetragen sind. Löschen?",
+    done: "Gelöscht.", rnext: "Gelöscht; gilt ab dem nächsten Start.",
+    title: "Toniebox einrichten", lang: "Sprache", langl: "Sprache der Box (Ansagen und diese Seite)", lsave: "Sprache speichern",
+    wifi: "WLAN", net: "Netzwerk", rescan: "Neu suchen", ssid: "Netzwerkname (SSID)", key: "Passwort", join: "Verbinden",
+    server: "Server", host: "Host (IP-Adresse oder DNS-Name; leer: kein Server)", port: "Port", save: "Speichern",
+    certs: "Zertifikate", c1: "Client-Zertifikat (client.der)", c0: "Privater Schlüssel (private.der)", up: "Hochladen",
+    note: "Die Sprache wird sofort gespeichert und auch beim Verbinden mitgeschickt. Server- und Zertifikatseinstellungen gelten ab dem nächsten Start der Box. Die WLAN-Einstellungen gelten sofort: die Box schließt ihren Zugangspunkt und verbindet sich mit dem Netzwerk.",
+    ok: "Gespeichert; gilt ab dem nächsten Start.", bad: "Die Box hat die Anfrage nicht verstanden.",
+    hostbad: "Der Host ist keine gültige IP-Adresse und kein gültiger DNS-Name.", vendor: "Ein Server des Herstellers kann nicht eingetragen werden.",
+    portbad: "Der Port muss zwischen 1 und 65535 liegen.", long: "/cfw/config.txt wäre länger als 1024 Byte.",
+    card: "Die SD-Karte konnte nicht beschrieben werden.", der: "Kein einzelnes DER-Element mit 2 bis 4096 Byte; nicht geschrieben.",
+    flash: "Schreiben in den Flash ist fehlgeschlagen.", choose: "Netzwerk wählen ...", none: "Keine Netzwerke gefunden",
+    ssidlen: "Bitte einen Netzwerknamen mit 1 bis 32 Byte eingeben.", keylen: "Das Passwort darf höchstens 63 Byte lang sein.",
+    joining: "Die Box verbindet sich jetzt (blaues Blinken); dieser Zugangspunkt wird geschlossen.", lstored: "Sprache gespeichert; gilt ab sofort.",
+    nothing: " Es wurde nichts gespeichert.", written: "in den Flash geschrieben", nextstart: ". Gilt ab dem nächsten Start.", nofile: "Bitte zuerst eine Datei wählen.",
+    pver: "Setup-Seite", fw: "Firmware", needs: "diese Seite braucht mindestens"
+  },
+  fr: {
+    reset: "Supprimer", rwifi: "Supprimer tous les réseaux Wi-Fi enregistrés", rcontent: "Supprimer tous les contenus locaux, les réglages des Tonies et de la box", rserver: "Supprimer les réglages du serveur",
+    qwifi: "Supprimer tous les réseaux Wi-Fi enregistrés ? La box ne rejoindra ensuite qu'un réseau configuré à nouveau ici.",
+    qcontent: "Supprimer tous les contenus audio de la carte (pas les annonces), les réglages des Tonies et de la box ? Les contenus sont téléchargés à nouveau lorsqu'une figurine est posée.",
+    qserver: "ATTENTION : cela supprime l'adresse du serveur, le port et le fichier CA du serveur (son nom reste). Sans eux, la box n'atteint plus aucun serveur jusqu'à ce qu'ils soient à nouveau saisis ici. Supprimer ?",
+    done: "Supprimé.", rnext: "Supprimé ; actif au prochain démarrage.",
+    title: "Configuration de la Toniebox", lang: "Langue", langl: "Langue de la box (annonces et cette page)", lsave: "Enregistrer la langue",
+    wifi: "Wi-Fi", net: "Réseau", rescan: "Actualiser", ssid: "Nom du réseau (SSID)", key: "Mot de passe", join: "Connecter",
+    server: "Serveur", host: "Hôte (adresse IP ou nom DNS ; vide : pas de serveur)", port: "Port", save: "Enregistrer",
+    certs: "Certificats", c1: "Certificat client (client.der)", c0: "Clé privée (private.der)", up: "Envoyer",
+    note: "La langue est enregistrée immédiatement et aussi envoyée avec Connecter. Les réglages du serveur et des certificats s'appliquent au prochain démarrage de la box. Les réglages Wi-Fi s'appliquent immédiatement : la box ferme son point d'accès et rejoint le réseau.",
+    ok: "Enregistré ; actif au prochain démarrage.", bad: "La box n'a pas compris la requête.",
+    hostbad: "L'hôte n'est ni une adresse IP ni un nom DNS valide.", vendor: "Un serveur du fabricant ne peut pas être défini.",
+    portbad: "Le port doit être compris entre 1 et 65535.", long: "/cfw/config.txt dépasserait 1024 octets.",
+    card: "Impossible d'écrire sur la carte SD.", der: "Pas un élément DER unique de 2 à 4096 octets ; non écrit.",
+    flash: "L'écriture dans la mémoire flash a échoué.", choose: "Choisir un réseau ...", none: "Aucun réseau trouvé",
+    ssidlen: "Saisir un nom de réseau de 1 à 32 octets.", keylen: "Le mot de passe peut comporter au plus 63 octets.",
+    joining: "La box se connecte (clignotement bleu) ; ce point d'accès se ferme.", lstored: "Langue enregistrée ; active dès maintenant.",
+    nothing: " Rien n'a été enregistré.", written: "écrit dans la mémoire flash", nextstart: ". Utilisé au prochain démarrage.", nofile: "Choisir d'abord un fichier.",
+    pver: "Page de configuration", fw: "firmware", needs: "cette page nécessite au moins"
+  }
+};
+let L = T.en;
+let fw = ""; /* the firmware's version text, "" while not known */
+const reason = { host: "hostbad", port: "portbad" };
+const tr = r => L[reason[r] || r] || r;
+function setLang(v) {
+  const code = { 0: "en", 1: "de", 2: "en", 3: "fr" }[v] || "en";
+  L = T[code];
+  document.documentElement.lang = code;
+  document.title = L.title;
+  document.querySelectorAll("[data-t]").forEach(el => { el.textContent = L[el.dataset.t]; });
+  const first = $("net").options[0];
+  if (first && first.value === "") first.textContent = nets.length ? L.choose : L.none;
+  showVersions();
+}
+const show = (el, ok, text) => { el.className = "msg " + (ok ? "ok" : "err"); el.textContent = text; };
+const hex = bytes => Array.from(bytes, b => b.toString(16).padStart(2, "0").toUpperCase()).join("");
+const post = (path, body) => fetch(path, { method: "POST", body, cache: "no-store" }).then(r => r.text());
+let nets = [];
+
+function bytesOf(h) { const b = new Uint8Array(h.length / 2); for (let i = 0; i < b.length; i++) b[i] = parseInt(h.substr(2 * i, 2), 16); return b; }
+function unesc(b) { const o = []; for (let i = 0; i < b.length; i++) { if (b[i] === 92 && i + 1 < b.length) i++; o.push(b[i]); } return new Uint8Array(o); }
+
+function scan() {
+  fetch("/scan.txt", { cache: "no-store" }).then(r => r.text()).then(t => {
+    nets = t.split("\n").filter(l => l.length >= 2).map(l => {
+      const raw = unesc(bytesOf(l.slice(2)));
+      return { sec: +l[0], raw, name: new TextDecoder().decode(raw) };
+    });
+    const sel = $("net");
+    sel.textContent = "";
+    sel.add(new Option(nets.length ? L.choose : L.none, ""));
+    nets.forEach((n, i) => { if (n.raw.length) sel.add(new Option(n.name + (n.sec ? " \u{1F512}" : ""), i)); });
+  });
+}
+$("net").onchange = e => { const n = nets[e.target.value]; if (n) $("ssid").value = n.name; };
+$("rescan").onclick = scan;
+
+$("join").onclick = () => {
+  const name = $("ssid").value, key = new TextEncoder().encode($("key").value);
+  const n = nets.find(x => x.name === name);
+  const ssid = n ? n.raw : new TextEncoder().encode(name);
+  if (!ssid.length || ssid.length > 32) return show($("wmsg"), false, L.ssidlen);
+  if (key.length > 63) return show($("wmsg"), false, L.keylen);
+  const s = hex(ssid), k = hex(key);
+  const mode = n ? n.sec : (key.length ? 3 : 0);
+  const f = "__SL_P_USL=&__SL_P_USN=&__SL_P_USR=" + s.slice(0, 63) + "&__SL_P_USS=" + s.slice(63) +
+    "&__SL_P_USP=" + k.slice(0, 63) + "&__SL_P_USQ=" + k.slice(63) + "&__SL_P_USM=" + mode + "&__SL_P_UST=" + $("lang").value + "&__SL_P_USO=1";
+  post("/wifi", f).then(r => show($("wmsg"), r === "ok",
+    r === "ok" ? L.joining : tr(r)))
+    .catch(() => show($("wmsg"), true, L.joining));
+};
+
+fetch("/lang.txt", { cache: "no-store" }).then(r => r.text()).then(t => { if (/^[0-3]$/.test(t)) { $("lang").value = t; setLang(t); } });
+$("lsave").onclick = () => post("/lang.txt", $("lang").value).then(r => show($("lmsg"), r === "ok",
+  r === "ok" ? L.lstored : tr(r)));
+$("lang").onchange = e => setLang(e.target.value);
+
+let cfg = "";
+function keyOf(l) { const i = l.indexOf("="); return i < 0 ? "" : l.slice(0, i).trim().toLowerCase(); }
+const loadConfig = () => fetch("/config.txt", { cache: "no-store" }).then(r => r.text()).then(t => {
+  cfg = t;
+  $("host").value = ""; $("port").value = "";
+  t.split(/\r?\n/).forEach(l => {
+    const k = keyOf(l), v = l.slice(l.indexOf("=") + 1).trim();
+    if (l.trim()[0] !== "#" && k === "host") $("host").value = v;
+    if (l.trim()[0] !== "#" && k === "port") $("port").value = v;
+  });
+});
+loadConfig();
+$("save").onclick = () => {
+  const host = $("host").value.trim(), port = $("port").value.trim() || "443";
+  const keep = cfg.split("\n").filter((l, i, a) => !["host", "port"].includes(keyOf(l)) && !(i === a.length - 1 && l === ""));
+  let t = keep.length ? keep.join("\n") + "\n" : "";
+  if (host) t += "host=" + host + "\nport=" + port + "\n";
+  post("/config.txt", t).then(r => { show($("smsg"), r === "ok", tr(r) + (r === "ok" ? "" : L.nothing)); if (r === "ok") cfg = t; });
+};
+
+$("up").onclick = async () => {
+  const out = [];
+  for (const [i, name] of [[2, "ca.der"], [1, "client.der"], [0, "private.der"]]) {
+    const f = $("c" + i).files[0];
+    if (!f) continue;
+    const r = f.size > 4096 ? "der" : await post("/cert/" + i, f);
+    out.push(name + ": " + (r === "ok" ? L.written : tr(r)));
+  }
+  show($("cmsg"), out.length && out.every(l => l.endsWith(L.written)), out.length ? out.join("; ") + L.nextstart : L.nofile);
+};
+
+for (const [id, kind, after] of [["rwifi", "wifi", "done"], ["rcontent", "content", "done"], ["rserver", "server", "rnext"]]) {
+  $(id).onclick = () => {
+    if (!confirm(L["q" + kind])) return;
+    post("/reset/" + kind, "").then(r => {
+      show($("rmsg"), r === "ok", r === "ok" ? L[after] : tr(r));
+      if (r === "ok" && kind === "server") loadConfig();
+    });
+  };
+}
+
+// the page has its own version and names the firmware it needs at least; the box tells its own
+// (GET /version.txt; an older firmware without it answers with this page instead)
+const meta = n => (document.querySelector('meta[name="' + n + '"]') || {}).content || "";
+const vnum = s => (/^CFW_(\d+)\.(\d+)\.(\d+)/.exec(s) || []).slice(1).map(Number);
+const older = (a, b) => {
+  const x = vnum(a), y = vnum(b);
+  for (let i = 0; i < 3 && x.length === 3 && y.length === 3; i++) if (x[i] !== y[i]) return x[i] < y[i];
+  return false;
+};
+function showVersions() {
+  const need = meta("cfw-page-requires");
+  $("pver").textContent = L.pver + " " + meta("cfw-page-version") + " · " + L.fw + " " + (fw || "?") +
+    (fw && older(fw, need) ? " · " + L.needs + " " + need : "");
+}
+fetch("/version.txt", { cache: "no-store" }).then(r => r.text()).then(t => { if (/^CFW_\S+$/.test(t.trim())) fw = t.trim(); })
+  .catch(() => {}).then(showVersions);
+
+scan();
+</script>
+</body>
+</html>
