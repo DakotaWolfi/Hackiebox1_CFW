@@ -569,7 +569,10 @@ static void wifi_up(wifi_mode_t m)
 {
     esp_wifi_set_mode(m);
     esp_wifi_start();
-    esp_wifi_set_ps(WIFI_PS_NONE); /* always on */
+    /* modem sleep between beacons, as ESP-IDF's default: the radio is the
+     * biggest part of the idle current; it wakes for every DTIM beacon, so a
+     * frame from the server waits at most one beacon interval or so. */
+    esp_wifi_set_ps(WIFI_PS_MIN_MODEM);
     running = true;
 }
 
