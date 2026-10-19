@@ -6,6 +6,9 @@ generations of the first Toniebox and the setup page that belongs to it.
 | File | For | Build |
 | --- | --- | --- |
 | `cc3200/ng-cfw.bin` | Toniebox with the CC3200 chip (SD bootloader slot image) | @CC3200_BUILD@ |
+| `cc3200/ngbootloader.bin` | Toniebox with the CC3200 chip: the HackieboxNG SD bootloader with trial start and automatic return on updates | revision @BOOTLOADER_REVISION@ |
+| `cc3200/flash/sys/mcuimg.bin` | its preloader for the flash of the box (`/sys/mcuimg.bin`) | revision @BOOTLOADER_REVISION@ |
+| `cc3200/card/` | the SD card for a first installation: bootloader, its boot state file, this firmware in slot cfw1, the setup page, `ngCfg.json` set to start it | |
 | `esp32/toniebox-cfw-esp32.bin` | Toniebox with the ESP32-S3 chip (app image) | @ESP32_BUILD@ |
 | `setup.htm` | the setup page of the box (Wi-Fi, server, certificates), version @PAGE_VERSION@, needs at least @PAGE_NEEDS@ | |
 | `SHA256SUMS` | checksums of the files above | |
@@ -27,11 +30,27 @@ without compression, as published.
 
 ## Install by hand
 
-**CC3200 box (SD card).** The box needs the HackieboxNG SD bootloader
-with slot support. Copy `cc3200/ng-cfw.bin` to `/revvox/boot/ng-cfw1.bin`
-on the card, set `"activeImg": "cfw1"` in `/revvox/boot/ngCfg.json`, and
-copy `setup.htm` to `/cfw/setup.htm`. The server goes into
-`/cfw/config.txt` (`host=`, `port=`), or set it on the setup page.
+**CC3200 box in the browser.** teddyCloud's web UI (web2, Box setup → CC3200)
+installs a box from this package over the serial port: backup, certificates,
+CA replacement and preloader, then it offers the content of the SD card as a
+zip to unpack onto the card.
+
+**CC3200 box (SD card).** For a first installation the preloader goes to the
+flash (`cc3200/flash/sys/mcuimg.bin` to `/sys/mcuimg.bin`, after moving the
+original `/sys/mcuimg.bin` to `/sys/pre-img.bin`), and `cc3200/card/` to the
+card, plus the original `/sys/mcuimg.bin` of the box as
+`/revvox/boot/ng-ofw1.bin`. The server goes into `/cfw/config.txt` on the
+card (`host=`, `port=`).
+
+To change a box that has HackieboxNG already, copy `cc3200/ngbootloader.bin`
+over `/revvox/boot/ngbootloader.bin` on the card: this SD bootloader starts a
+new image on trial and returns to the previous one when it does not come up.
+Copy `cc3200/ng-cfw.bin` to `/revvox/boot/ng-cfw1.bin` and `setup.htm` to
+`/cfw/setup.htm`. In `/revvox/boot/ngCfg.json` set, under `general`,
+`"activeImg": "cfw1"` and `"stateFile": "/revvox/boot/ngstate.bin"`. The
+server goes into `/cfw/config.txt` (`host=`, `port=`), or set it on the
+setup page. The previous `activeImg` (usually `"ofw1"`) starts the original
+firmware again.
 
 **ESP32 box (serial port).** Keep a full flash dump of the box first. With
 the box in download mode (J100 shorted at a cold power-on), write the
@@ -44,4 +63,6 @@ replaced by teddyCloud later.
 ## Licence
 
 GPL-3.0-or-later. The source code of this release is revision @REVISION@
-of the Toniebox1_CFW repository.
+of the Toniebox1_CFW repository. `cc3200/ngbootloader.bin` is built from
+revision @BOOTLOADER_REVISION@ of hackiebox_cfw_ng_cfw (the HackieboxNG SD
+bootloader with trial start).
