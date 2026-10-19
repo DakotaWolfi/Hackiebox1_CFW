@@ -68,6 +68,9 @@ for key, value in cfg["general"].items():
         general["activeImg"] = "cfw1"
         general["stateFile"] = "/revvox/boot/ngstate.bin"
 cfg["general"] = general
+# the images carry their SHA-256 digest at the end: the bootloader never starts a damaged one
+for slot in ("cfw1", "cfw2", "cfw3"):
+    cfg.setdefault(slot, {})["checkHash"] = True
 open(path, "w").write(json.dumps(cfg, indent=4) + "\n")
 PY
 
