@@ -109,6 +109,7 @@ static void __attribute__((noreturn)) deep_sleep(uint64_t timer_us)
 {
     bool on_charger = board_wake_line() && !board_ear_big_pressed() && !board_ear_small_pressed();
     board_release_for_reset();
+    board_hold_off();
     if (timer_us)
     {
         esp_sleep_enable_timer_wakeup(timer_us);

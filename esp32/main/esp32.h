@@ -18,6 +18,7 @@
 int board_adc_mv(int ch);
 bool board_wake_line(void);
 void board_release_for_reset(void);
+void board_hold_off(void);
 
 /* led.c: the LED channels are set up. */
 bool led_ready(void);

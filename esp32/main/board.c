@@ -111,6 +111,10 @@ static void sample(void *arg)
 
 void board_early_init(void)
 {
+    /* the off levels held through the deep sleep (board_hold_off) */
+    gpio_hold_dis(PIN_PERI_POWER);
+    gpio_hold_dis(PIN_STORAGE_POWER);
+    gpio_hold_dis(PIN_DAC_RESET);
     /* Step 2 of the start-up on this board: codec in reset, both supplies on,
      * NFC not selected. GPIO45 is driven only after the reset (strapping). */
     out(PIN_DAC_RESET, false);
@@ -259,4 +263,16 @@ void board_release_for_reset(void)
     gpio_set_level(PIN_DAC_RESET, false);
     gpio_set_level(PIN_PERI_POWER, false);
     gpio_set_level(PIN_STORAGE_POWER, true);
+}
+
+/* In the deep sleep the pads lose their output levels; without a hold the
+ * supply switches would depend on the board's resistors. Codec in reset,
+ * both supplies off; the other outputs go back to inputs, so nothing feeds
+ * the unpowered chips. GPIO45 low is also its level for the next reset. */
+void board_hold_off(void)
+{
+    gpio_hold_en(PIN_DAC_RESET);
+    gpio_hold_en(PIN_PERI_POWER);
+    gpio_hold_en(PIN_STORAGE_POWER);
+    gpio_deep_sleep_hold_en();
 }
