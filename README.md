@@ -10,7 +10,8 @@ observing the box's behaviour, measurements on the hardware and on the
 network, and trying things out. It does what the original firmware does
 at the functional level, plus a teddyCloud extension (settings files,
 event tags, remote commands) and the parts for the SD bootloader, the
-update and the server configuration. The factory
+update and the server configuration (see "What the custom firmware does
+beyond the original" below). The factory
 reset is replaced by the delete functions of the setup page. Of the log records the firmware sends what teddyCloud
 evaluates (events, tag, firmware, playback and volume records); the rest
 is not planned. Much of the code has not run on a device yet.
@@ -22,6 +23,147 @@ BSD-1-Clause style), FreeRTOS (MIT), TI SimpleLink host driver
 (BSD-3-Clause). The TI CC3200 SDK is used from outside the repository. Files under `third_party/` are not edited: a patched
 vendored file is a copy under `src/` (`src/fatfs/ff.c`, the patches marked
 `FF_TB_PATCHES`), identical to the original except the patch.
+
+## What the custom firmware does beyond the original
+
+This section is for users. The custom firmware plays Tonies exactly like the
+original. On top of that it has the functions below, and it solves some
+things differently. The settings for them are made in teddyCloud with CFW
+support (`teddycloud_cfw`): per Tonie in the Tonie's edit dialog, per box
+under Tonieboxes, and as event tags. The box gets them with its usual check
+with the server and keeps them on the SD card, so they also work offline.
+A box without any of these settings behaves like the original firmware,
+except for the three functions marked **always on**. The ESP32 box runs
+the same firmware and has the same functions.
+
+### Slap the box upside down: start over (always on)
+
+> **Turn the box upside down (ears facing down, as for the original's
+> restart with both ears) and slap it on either side. Playback jumps back to the very beginning of the Tonie, with the
+> usual "chapter back" sound. With shuffle on, a new random order starts.**
+
+The original firmware has no such gesture. There, a slap on the
+upside-down box only moves one chapter, as on the upright box. Neither the
+original documentation nor teddyCloud mention the gesture, so new users
+will not find it on their own. It is handy for audio books and for Tonies
+with many chapters, where slapping back chapter by chapter takes long. The
+slap lock (below) stops this gesture too.
+
+### Switch off with both ears (always on)
+
+Press both ears together and let go within 2 seconds: the LED blinks lilac
+once, playback stops (the position is kept as on removing the Tonie), and
+the box switches off at once, even with a Tonie on it. The original firmware
+has no off switch; it only switches itself off after its idle time. Holding
+both ears longer still does what it does in the original (setup mode after
+5 seconds, restart upside down after 10 seconds). The
+function can be switched off per box.
+
+### Any NFC tag as a Tonie (always on)
+
+Besides real Tonies, the box accepts any ISO 15693 tag (for example NFC
+stickers or cards of the same type). It reads only the tag's ID and never
+writes to it. In teddyCloud you give the tag a content like any Tonie. It
+can also be a normal Tonie, a Tonie with its own settings, or an event tag.
+
+### Settings per Tonie
+
+| Setting | Effect |
+| --- | --- |
+| Resume | The Tonie continues where it stopped, even when other Tonies played in between or the box was off. The original remembers only the Tonie played last. When the content has played to its end, the next start is from the beginning. |
+| Shuffle | Contents with 2 to 99 chapters play every chapter once in a random order. Slapping moves through this order. Without resume, the order is kept as long as no other Tonie plays in between; with resume, it is always kept. A finished order, or the upside-down slap, starts a new one. |
+| Sleep timer | After N minutes the box stops. During the first third the volume stays as it is, then it fades linearly to silence. Taking the Tonie off pauses the timer, putting it back continues it. Changing the volume with the ears during the fade fades from the new volume. |
+| Volume limit | Its own limit for speaker and headphones, in all 16 volume steps (0 to 15), and it may be higher than the box's. The original only knows 4 levels per box. |
+| LED | On, dimmed or off while this Tonie is on the box. |
+| Locks | Slap lock, tilt lock and volume lock (below), only for this Tonie. A Tonie's setting wins over the box's in both directions. |
+
+### Settings per box
+
+Speaker and headphone limit (0 to 15), LED level, the three locks and the
+switch-off with both ears. In the original, the server can only set the
+limit in 4 levels and switch slapping and tilting on or off together.
+
+The locks:
+
+- **Slap lock:** slapping no longer changes the chapter (also not the
+  upside-down slap).
+- **Tilt lock:** tilting no longer winds forward or back.
+- **Volume lock:** a short ear press no longer changes the volume. Holding
+  an ear and the gestures with both ears still work.
+
+A locked gesture does nothing at all: no sound, no blink, no chapter change.
+
+### Event tags
+
+Any tag (a spare Tonie, a Creative Tonie or an NFC sticker) can be made an
+event tag in teddyCloud. Putting it on the box plays nothing; the LED
+blinks turquoise once. Then:
+
+- **For the next Tonie:** the actions are kept for 60 seconds. The next
+  Tonie placed within that time takes them over and keeps them: switch
+  resume or shuffle on, off or over, set a sleep timer (permanent, or only
+  for this time), reset all its settings, switch its locks. Parents can thus
+  change a Tonie's settings without a phone or computer.
+- **Set with the ears:** while the event tag is on the box, the ears set the
+  volume limit (both outputs are opened up to the maximum) or the LED level
+  (each press: on, dimmed, off). The value counts when the tag is taken off,
+  for the next Tonie or for the whole box. If a tag sets both, holding one
+  ear for 3 seconds switches between volume and LED.
+- **For the whole box:** switch the box's locks and the switch-off with both
+  ears at once.
+
+The box confirms with five blinks and a short tone pair per action:
+turquoise and a rising tone for "on", lilac and a falling tone for "off",
+alternating when the tag did both. The tones can be switched off per tag.
+
+### Remote control
+
+From teddyCloud, and through MQTT from Home Assistant: pause, continue,
+stop, next and previous chapter, set the volume, play a content without a
+Tonie on the box (by its ID), show the state, and look for a firmware
+update now. While paused, the box counts as idle and switches off after its
+idle time; with resume, it continues at the paused position later. The
+state (playing, Tonie, chapter, volume) is updated live.
+
+### Battery
+
+The box reports the battery voltage, whether it is on the charging station
+and whether the battery is low. teddyCloud shows it on the box's card.
+
+### Server, setup and updates
+
+- **Server address on the SD card.** The box reads its server (host, port,
+  CA certificate, time server) from `/cfw/config.txt` or the setup page.
+  It never contacts the manufacturer's servers on its own; nothing in the
+  flash has to be patched to point it to teddyCloud.
+- **Own setup page** (in several languages): Wi-Fi with a list of the
+  networks around, server, certificate upload, and delete functions for
+  the stored Wi-Fi networks, for all local contents and settings, and for
+  the server settings. They replace the factory reset of the original.
+- **Original firmware stays.** On the CC3200 box the custom firmware starts
+  from the SD card; the original stays in the flash and can be started
+  again at any time.
+- **Updates through teddyCloud, safely.** A new version goes into a free
+  slot and starts once as a trial. If it does not come up properly, the box
+  goes back to the previous version on its own. teddyCloud offers release,
+  beta and alpha channels and the download from GitHub.
+- **Works with an unmodified teddyCloud.** Towards teddyCloud and the
+  Boxine cloud the box presents itself as the original firmware 3.4.0, so
+  passing requests on to the cloud keeps working. Only with CFW support
+  switched on in teddyCloud are the functions above set from there.
+
+### More robust
+
+Many cases in which the original firmware crashes or restarts are handled
+calmly: malformed answers from the server, broken or odd files on the SD
+card, very long Wi-Fi names, unexpected inputs on the setup page. The box
+ignores the input or discards the file and carries on.
+
+### Not (yet) there
+
+The factory reset through the ears does not return to a factory image;
+use the delete functions of the setup page. Of the original's log records
+the box sends only those teddyCloud evaluates.
 
 ## Building
 
