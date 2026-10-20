@@ -654,8 +654,8 @@ extern "C" {
  * settings); multi-threaded mode with the OS layer of src/sl_osi.c. */
 #define SL_PLATFORM_MULTI_THREADED
 
-/* CFW: host-driver command time-outs, 1000 ms short and 53000 ms long
- * (TB-NET-001, TB-NET-005 Notes, TB-ERR-024); read by source/driver.h. */
+/* CFW: host-driver command time-outs, 1000 ms short and 53000 ms long;
+ * read by source/driver.h. */
 #define SL_DRIVER_TIMEOUT_SHORT        (1000)
 #define SL_DRIVER_TIMEOUT_LONG         (53000)
 

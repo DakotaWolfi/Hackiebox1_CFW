@@ -1,4 +1,4 @@
-/* CELT-only probe: SILK and hybrid packets are refused before decoding (TB-AUD-013). */
+/* CELT-only probe: SILK and hybrid packets are refused before decoding. */
 #include "opus_types.h"
 #include "entdec.h"
 #include "silk/control.h"
