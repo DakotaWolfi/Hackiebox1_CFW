@@ -91,9 +91,10 @@ for t in release/README*.md.in; do
     sed -e "s/@VERSION@/CFW_$V/g" -e "s/@REVISION@/$REV/g" -e "s/@CC3200_BUILD@/$CC_BUILD/g" \
         -e "s/@ESP32_BUILD@/$ESP_BUILD/g" -e "s/@BOOTLOADER_REVISION@/$BL_REV/g" -e "s/@PAGE_VERSION@/$PAGE_VERSION/g" -e "s/@PAGE_NEEDS@/$PAGE_NEEDS/g" "$t" > "$PKG/$(basename "$t" .in)"
 done
+tools/third_party_notices.sh "$IDF" > "$PKG/THIRD-PARTY-NOTICES.txt"
 (cd "$PKG" && sha256sum cc3200/ng-cfw.bin cc3200/ngbootloader.bin cc3200/flash/sys/mcuimg.bin esp32/toniebox-cfw-esp32.bin setup.htm > SHA256SUMS)
 
 ZIP=$OUT/toniebox-cfw-$V.zip
-(cd "$PKG" && zip -q -0 -X -r "../$(basename "$ZIP")" README.md SHA256SUMS cc3200 esp32 setup.htm)
+(cd "$PKG" && zip -q -0 -X -r "../$(basename "$ZIP")" README.md THIRD-PARTY-NOTICES.txt SHA256SUMS cc3200 esp32 setup.htm)
 echo "== $ZIP (CFW_$V, $REV; CC3200 build $CC_BUILD, SD bootloader $BL_REV, ESP32 build $ESP_BUILD; setup page $PAGE_VERSION, needs $PAGE_NEEDS)"
 unzip -v "$ZIP" | sed -n '4,20p'
