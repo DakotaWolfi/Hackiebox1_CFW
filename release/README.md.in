@@ -63,7 +63,7 @@ replaced by teddyCloud later.
 ## Licence
 
 GPL-3.0-or-later. The source code of this release is revision @REVISION@
-of the Toniebox1_CFW repository. `cc3200/ngbootloader.bin` is built from
+of the Hackiebox1_CFW repository. `cc3200/ngbootloader.bin` is built from
 revision @BOOTLOADER_REVISION@ of hackiebox_cfw_ng_cfw (the HackieboxNG SD
 bootloader with trial start). The images contain third-party code under
 its own licence (Opus, FatFs, FreeRTOS, TI SimpleLink and SDK, ESP-IDF and

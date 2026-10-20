@@ -3,7 +3,7 @@
 Two box generations, one code base: `src/` is shared, `src/cc3200/` is the
 CC3200 platform (this README), `esp32/` the ESP32-S3 box as an ESP-IDF
 project (`esp32/README.md`, GPL-3.0-or-later). The repository is
-`Toniebox1_CFW` (until 2026-10-14 `CC3200_CustomFirmware`).
+`Hackiebox1_CFW` (until 2026-10-20 `Toniebox1_CFW`, until 2026-10-14 `CC3200_CustomFirmware`).
 
 Firmware for the first-generation Toniebox (TI CC3200). It is based on
 observing the box's behaviour, measurements on the hardware and on the
@@ -174,7 +174,7 @@ GmbH; the names only say which devices the software works with.
 Changing the firmware of a box, opening it or connecting to its debug port
 is at your own risk: a box can become unusable, and it can affect claims
 against the manufacturer. The software comes without any warranty (see the
-licence). Using the manufacturer's cloud is subject to its terms of use.
+licence).
 
 ## Building
 
