@@ -6,8 +6,8 @@ generations of the first Toniebox and the setup page that belongs to it.
 | File | For | Build |
 | --- | --- | --- |
 | `cc3200/ng-cfw.bin` | Toniebox with the CC3200 chip (SD bootloader slot image) | @CC3200_BUILD@ |
-| `cc3200/ngbootloader.bin` | Toniebox with the CC3200 chip: the HackieboxNG SD bootloader with trial start and automatic return on updates | revision @BOOTLOADER_REVISION@ |
-| `cc3200/flash/sys/mcuimg.bin` | its preloader for the flash of the box (`/sys/mcuimg.bin`) | revision @BOOTLOADER_REVISION@ |
+| `cc3200/ngbootloader.bin` | Toniebox with the CC3200 chip: the HackieboxNG SD bootloader with trial start and automatic return on updates | HackieboxNG with the trial-start patch |
+| `cc3200/flash/sys/mcuimg.bin` | its preloader for the flash of the box (`/sys/mcuimg.bin`) | HackieboxNG with the trial-start patch |
 | `cc3200/card/` | the SD card for a first installation: bootloader, its boot state file, this firmware in slot cfw1, the setup page, `ngCfg.json` set to start it | |
 | `esp32/toniebox-cfw-esp32.bin` | Toniebox with the ESP32-S3 chip (app image) | @ESP32_BUILD@ |
 | `setup.htm` | the setup page of the box (Wi-Fi, server, certificates), version @PAGE_VERSION@, needs at least @PAGE_NEEDS@ | |
@@ -64,8 +64,8 @@ replaced by teddyCloud later.
 
 GPL-3.0-or-later. The source code of this release is revision @REVISION@
 of the Hackiebox1_CFW repository. `cc3200/ngbootloader.bin` is built from
-revision @BOOTLOADER_REVISION@ of hackiebox_cfw_ng_cfw (the HackieboxNG SD
-bootloader with trial start). The images contain third-party code under
+HackieboxNG (commit aad9035) with the trial-start patch of the
+hackiebox_cfw_ng_cfw repository. The images contain third-party code under
 its own licence (Opus, FatFs, FreeRTOS, TI SimpleLink and SDK, ESP-IDF and
 its components): `THIRD-PARTY-NOTICES.txt` lists it with the licence texts.
 
