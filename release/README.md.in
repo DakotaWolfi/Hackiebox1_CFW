@@ -62,7 +62,7 @@ replaced by teddyCloud later.
 
 ## Licence
 
-GPL-3.0-or-later. The source code of this release is revision @REVISION@
+GPL-3.0-or-later. The source code of this release is the tag @VERSION@
 of the Hackiebox1_CFW repository. `cc3200/ngbootloader.bin` is built from
 HackieboxNG (commit aad9035) with the trial-start patch of the
 hackiebox_cfw_ng_cfw repository. The images contain third-party code under
