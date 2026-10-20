@@ -36,6 +36,10 @@ A box without any of these settings behaves like the original firmware,
 except for the three functions marked **always on**. The ESP32 box runs
 the same firmware and has the same functions.
 
+What a server has to do to support the custom firmware (detection, hello,
+settings files, remote control, update, setup page) is described in
+`docs/protocol.md`.
+
 ### Slap the box upside down: start over (always on)
 
 > **Turn the box upside down (ears facing down, as for the original's
