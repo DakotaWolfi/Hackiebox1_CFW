@@ -203,6 +203,10 @@ void log_fn(uint8_t level, uint16_t group, uint16_t function, uint8_t variant, c
 }
 bool player_busy(void) { return false; }
 uint32_t player_decode_ms;
+void player_write_begin(void) {}
+void player_write_end(void) {}
+void player_ahead_begin(uint8_t *buf) { (void)buf; }
+void player_ahead_end(void) {}
 void player_sync_result(int e, bool u)
 {
     (void)u;
@@ -877,6 +881,41 @@ static void ext_tests(const uint8_t *taf, long tz)
         CHECK(settings.limit_speaker == 3, "field 3 still applied");
         ext_answer(m, k);
         CHECK(n_fn == 1, "second hello: no record");
+
+        printf("    figure placed after the request: the answer still arrives, the hello is answered\n");
+        {
+            void abort_hook(int n)
+            {
+                (void)n;
+                if (n_sent && sent_len[n_sent - 1])
+                {
+                    cloud_sync_abort(); /* once the request is out */
+                }
+            }
+            hello = false;
+            n_fn = 0;
+            reset();
+            serve(ans, hl + k);
+            recv_calls = 0;
+            recv_hook = abort_hook;
+            int old_chunk = chunk;
+            chunk = 16; /* several receives after the abort */
+            e = fresh_session(1);
+            chunk = old_chunk;
+            recv_hook = NULL;
+            CHECK(e == CE_OK && n_fn == 1 && fn_func[0] == 32257, "hello answered despite the placement");
+
+            printf("    figure placed, server silent: the session ends within the grace of 2 s\n");
+            reset();
+            serve("", 0);
+            recv_calls = 0;
+            recv_hook = abort_hook;
+            uint32_t t0 = sim_ms;
+            e = fresh_session(1);
+            recv_hook = NULL;
+            CHECK(e == CE_CANCELLED && sim_ms - t0 <= 4000, "cancelled after the grace");
+            printf("      after %lu ms\n", (unsigned long)(sim_ms - t0));
+        }
 
         printf("    hello in an unconfirmed trial start: answered once the trial is confirmed\n");
         hello = false;

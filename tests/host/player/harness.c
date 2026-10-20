@@ -172,6 +172,7 @@ cloud_download_t cloud_dl;
  * readable DLRATE (default 8192) bytes per output buffer. env HOLD=<from>:<to>: figures held
  * in that span of simulated ms. */
 static uint32_t dl_size;
+static uint8_t lent[4096]; /* the cloud activity's memory lent for the reading ahead */
 static void dl_tick(void)
 {
     if (!dl_size || cloud_dl.done || cloud_dl.failed)
@@ -184,6 +185,7 @@ static void dl_tick(void)
     {
         cloud_dl.failed = true;
         cloud_dl.error = CE_TRANSFER;
+        player_ahead_end();
         printf("[%6u] STUB download breaks off\n", sim_ms);
         return;
     }
@@ -192,6 +194,7 @@ static void dl_tick(void)
         cloud_dl.readable = cloud_dl.pos = dl_size;
         cloud_dl.done = true;
         cloud_dl.active = false;
+        player_ahead_end();
         printf("[%6u] STUB download done\n", sim_ms);
     }
 }
@@ -227,6 +230,7 @@ void cloud_content(const uint8_t uid[8], const uint8_t *t, uint32_t o, uint32_t 
         cloud_dl.active = cloud_dl.data = true;
         cloud_dl.readable = cloud_dl.pos = o > 65536 ? o : 65536;
         cloud_dl.size = dl_size;
+        player_ahead_begin(lent);
         return;
     }
     printf("[%6u] STUB cloud_content offset %u if-range %u -> fails\n", sim_ms, o, r);

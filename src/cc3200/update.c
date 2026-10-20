@@ -96,7 +96,7 @@ void update_abort(void)
     slot_name(name, u.slot, "tmp");
     f_unlink(name);
     u_open = false;
-    debug_printf("update: abandoned, %s deleted\n", name);
+    debug_printf("update: abort, %s deleted\n", name);
 }
 
 bool update_begin(uint32_t length)
@@ -105,31 +105,31 @@ bool update_begin(uint32_t length)
     /* before anything is written. */
     if (length < TRAILER || length >= 0x80000000u)
     {
-        debug_printf("update: %lu B < %u: abandoned\n", (unsigned long)length, TRAILER);
+        debug_printf("update: %lu B < %u, abort\n", (unsigned long)length, TRAILER);
         return false;
     }
     if (length > UPDATE_SLOT_MAX)
     {
-        debug_printf("update: %lu B > %u: abandoned\n", (unsigned long)length,
+        debug_printf("update: %lu B > %u, abort\n", (unsigned long)length,
                      UPDATE_SLOT_MAX);
         return false;
     }
     if (!handover_get()->valid)
     {
-        debug_printf("update: no SD bootloader: abandoned\n");
+        debug_printf("update: no SD bootloader, abort\n");
         return false;
     }
     unsigned n = update_free_slot();
     if (!n)
     {
-        debug_printf("update: no free slot: abandoned\n");
+        debug_printf("update: no free slot, abort\n");
         return false;
     }
     char name[32];
     slot_name(name, n, "tmp"); /* never directly into the slot file */
     if (f_open(&u.f, name, FA_WRITE | FA_CREATE_ALWAYS) != FR_OK)
     {
-        debug_printf("update: %s cannot be created: abandoned\n", name);
+        debug_printf("update: %s not created, abort\n", name);
         return false;
     }
     u_open = true;
@@ -137,7 +137,7 @@ bool update_begin(uint32_t length)
     u.length = length;
     u.pos = 0;
     sha256_init(&u.sha);
-    debug_printf("update: item 3, %lu bytes into %s\n", (unsigned long)length, name);
+    debug_printf("update: item 3, %lu B into %s\n", (unsigned long)length, name);
     return true;
 }
 
@@ -158,7 +158,7 @@ bool update_write(const uint8_t *p, size_t n)
     UINT w = 0;
     if (f_write(&u.f, p, (UINT)n, &w) != FR_OK || w != n)
     {
-        debug_printf("update: write failed at %lu\n", (unsigned long)u.pos);
+        debug_printf("update: write FAILED at %lu\n", (unsigned long)u.pos);
         update_abort();
         return false;
     }
@@ -193,7 +193,7 @@ static const char *check_build_block(const uint8_t *bb)
     uint32_t kind = le32(bb + 100);
     if (kind == 4)
     {
-        debug_printf("update: image kind 4 accepted\n");
+        debug_printf("update: kind 4 ok\n");
     }
     else if (kind != 2)
     {
@@ -221,7 +221,7 @@ update_result_t update_finish(void)
     slot_name(slot, u.slot, "bin");
     if (u.pos != u.length)
     {
-        debug_printf("update: %lu of %lu bytes received\n", (unsigned long)u.pos, (unsigned long)u.length);
+        debug_printf("update: %lu of %lu B\n", (unsigned long)u.pos, (unsigned long)u.length);
         update_abort();
         return UPDATE_ABANDONED;
     }
@@ -243,7 +243,7 @@ update_result_t update_finish(void)
                                                                         : check_build_block(u.tail);
     if (why)
     {
-        debug_printf("update: %s: abandoned\n", why);
+        debug_printf("update: %s, abort\n", why);
         f_unlink(tmp);
         return UPDATE_ABANDONED;
     }
@@ -251,14 +251,14 @@ update_result_t update_finish(void)
     FRESULT r = f_unlink(slot);
     if ((r != FR_OK && r != FR_NO_FILE) || f_rename(tmp, slot) != FR_OK)
     {
-        debug_printf("update: %s cannot be replaced: abandoned\n", slot);
+        debug_printf("update: %s not replaced, abort\n", slot);
         f_unlink(tmp);
         return UPDATE_ABANDONED;
     }
-    debug_printf("update: build %lu installed in %s\n", (unsigned long)le32(u.tail + 8), slot);
+    debug_printf("update: build %lu in %s\n", (unsigned long)le32(u.tail + 8), slot);
     if (!bootstate_trial((uint8_t)(2 + u.slot)))
     {
-        debug_printf("update: state file not written, no trial\n");
+        debug_printf("update: no state file, no trial\n");
         return UPDATE_ABANDONED;
     }
     restart_pending = true;
@@ -275,7 +275,7 @@ void update_restart(void)
     sound_park(500);
     net_shutdown();
     /* The retained state of the power handling is not stored yet. */
-    debug_printf("update: restart (reset)\n");
+    debug_printf("update: restart\n");
     vTaskDelay(pdMS_TO_TICKS(100) + 1);
     MAP_PRCMMCUReset(true);
     for (;;)

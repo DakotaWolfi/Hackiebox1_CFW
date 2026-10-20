@@ -47,13 +47,13 @@ void journal_load(void)
     flashfs_delete(NAME);
     if (n < 4)
     {
-        debug_printf("journal: too short (%ld bytes), ignored\n", n);
+        debug_printf("journal: %ld B, too short\n", n);
         return;
     }
     unsigned len = (unsigned)rec[0] << 8 | rec[1], ver = (unsigned)rec[2] << 8 | rec[3];
     if (!((ver == 1 && len == 12) || (ver == 2 && len == 8)) || n < (long)len)
     {
-        debug_printf("journal: invalid, length %u version %u, %ld B\n", len, ver, n);
+        debug_printf("journal: bad, %u v%u, %ld B\n", len, ver, n);
         return;
     }
     if (ver == 1)
@@ -64,7 +64,7 @@ void journal_load(void)
     {
         sector = (uint32_t)rec[4] | (uint32_t)rec[5] << 8 | (uint32_t)rec[6] << 16 | (uint32_t)rec[7] << 24;
     }
-    debug_printf("journal: version %u found\n", ver);
+    debug_verbose("journal: v%u\n", ver);
 }
 
 uint32_t journal_sector(void)

@@ -163,7 +163,7 @@ static void start_if_due(uint32_t min)
     TickType_t dt = xTaskGetTickCount() - t0;
     if (!ok || dt > 100)
     {
-        debug_printf("snd: unmute wait %lu ms%s\n", (unsigned long)dt, ok ? "" : " timeout");
+        debug_printf("snd: unmute %lu ms%s\n", (unsigned long)dt, ok ? "" : " timeout");
     }
     taskENTER_CRITICAL();
     if (!playing && head != tail)

@@ -167,7 +167,7 @@ static void after_recovery(void)
     bool headset, unmuted = st.dac_unmuted;
     if (!codec_configure(&headset))
     {
-        debug_printf("snd: codec after recovery failed\n");
+        debug_printf("snd: codec recovery FAILED\n");
         st.configured = false;
         return;
     }
@@ -178,7 +178,7 @@ static void after_recovery(void)
     {
         dac_set(true);
     }
-    debug_printf("snd: codec after recovery ok\n");
+    debug_printf("snd: codec recovered\n");
 }
 
 /* the DAC follows the wanted stream state; a waiting
@@ -299,7 +299,7 @@ static void task(void *arg)
     bootstate_report(BOOT_CHECK_CODEC, configured); /* trial-start confirmation */
     if (!configured)
     {
-        debug_printf("snd: codec config failed\n");
+        debug_printf("snd: codec config FAILED\n");
     }
     else
     {

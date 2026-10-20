@@ -29,6 +29,7 @@
 #include "ledui.h"
 #include "monitor.h"
 #include "net.h"
+#include "lowram.h"
 #include "player.h"
 #include "power.h"
 #include "pwrstate.h"
@@ -351,6 +352,15 @@ void player_resume_set(uint32_t r)
 static FIL file;
 static taf_header_t hdr;
 static uint8_t block[TAF_BLOCK];
+/* The block at read_pos read ahead while the output is full, so that a
+ * download's card write (up to 630 ms on some cards) holds up the reading
+ * ahead and not the decoder. The memory is the cloud activity's, lent
+ * while a content download writes (player_ahead_begin/end). */
+static uint8_t *volatile ahead;
+static uint32_t ahead_pos; /* its offset */
+static unsigned ahead_len; /* its length, 0 when there is none */
+static bool ahead_on;      /* while a content plays */
+static volatile bool want_card, reading, writing;
 static uint32_t size;       /* Z */
 static uint32_t read_pos;   /* R: offset after the last block read */
 static uint32_t jump_start; /* J: jump start offset, 0 when none */
@@ -412,7 +422,7 @@ static void poll_events(void);
 static uint8_t dec_mem[17984] __attribute__((aligned(8))); /* opus_decoder_get_size(2) = 17932 on the box */
 static bool dec_too_small;                                 /* nothing is decoded then */
 static OpusDecoder *const dec = (OpusDecoder *)dec_mem;
-static uint8_t packet[PACKET_MAX];
+static uint8_t packet[PACKET_MAX] LOWRAM; /* written before use */
 static int16_t pcm[2 * FRAME_MAX];
 
 static struct
@@ -431,7 +441,7 @@ static struct
 
 static struct
 {
-    uint32_t packets, frames, decode_ms, max_ms;
+    uint32_t packets, frames, decode_ms, max_ms, read_max, ahead;
 } stats;
 
 uint32_t player_decode_ms;
@@ -440,16 +450,19 @@ uint32_t player_decode_ms;
 static int16_t *out;
 static unsigned out_frames;
 
+static void read_ahead(void);
+
 static void emit(const int16_t *s, unsigned frames)
 {
     while (frames && !stop_request)
     {
         if (!out)
         {
+            read_ahead();
             out = audio_out_buffer();
             if (!out)
             {
-                debug_printf("pl: output takes no buffers\n");
+                debug_printf("pl: output takes none\n");
                 audio_out_report();
                 STOP("output");
                 return;
@@ -488,7 +501,7 @@ static void undecodable(const char *why)
 {
     if (!st.dead)
     {
-        debug_printf("pl: undecodable (%s), to next page 0\n", why);
+        debug_printf("pl: undecodable %s, page 0\n", why);
     }
     st.dead = true;
     st.decoding = false;
@@ -776,7 +789,7 @@ static void process_page(const uint8_t *pg)
     {
         if (!st.ending)
         {
-            debug_printf("pl: end-of-stream on page %lu (6889)\n",
+            debug_printf("pl: end of stream, page %lu (6889)\n",
                          (unsigned long)seq);
         }
         st.ending = true;
@@ -813,7 +826,7 @@ static bool jump_to(uint32_t offset, const char *what)
 {
     if (downloading && !cloud_dl.done && (uint64_t)offset + TAF_BLOCK > cloud_dl.readable)
     {
-        debug_printf("pl: jump %lu not downloaded yet (%lu) (6218)\n", (unsigned long)offset,
+        debug_printf("pl: jump %lu not loaded (%lu) (6218)\n", (unsigned long)offset,
                      (unsigned long)cloud_dl.readable);
         return false;
     }
@@ -891,7 +904,7 @@ static bool shuffle_next(void)
     if (shuf.index + 1u >= shuf.n)
     {
         shuf.finished = true;
-        debug_printf("pl: shuffle order finished\n");
+        debug_verbose("pl: shuffle done\n");
         return false;
     }
     if (!shuffle_jump(shuf.index + 1u, false, "shuffle"))
@@ -1051,7 +1064,7 @@ static void gesture(const event_t *e)
     }
     else
     {
-        debug_printf("pl: restart too late (6218)\n");
+        debug_verbose("pl: restart late (6218)\n");
     }
 }
 
@@ -1103,7 +1116,8 @@ static void download_watch(void);
  * a prompt or the power-off end the pause without continuing. */
 static void pause_loop(void)
 {
-    debug_printf("pl: paused at %lu\n", (unsigned long)read_pos);
+    debug_verbose("pl: paused at %lu\n", (unsigned long)read_pos);
+    want_card = false;
     if (out && out_frames)
     {
         audio_out_commit_frames(out_frames); /* what was decoded plays out */
@@ -1152,7 +1166,7 @@ static void pause_loop(void)
     {
         ledui_request(downloading && !dl_complete ? LED_CONTENT_DOWNLOAD : LED_READY_PLAYING);
     }
-    debug_printf("pl: pause ends\n");
+    debug_verbose("pl: pause ends\n");
 }
 
 /* Events while the content plays (state Content). */
@@ -1265,7 +1279,7 @@ static int read_block(void)
     }
     if (read_pos >= end_pos)
     {
-        debug_printf("pl: language chapter ends at %lu (7380)\n", (unsigned long)read_pos);
+        debug_printf("pl: language chapter end %lu (7380)\n", (unsigned long)read_pos);
         return 0;
     }
     wait_language_chapter();
@@ -1278,16 +1292,34 @@ static int read_block(void)
     {
         /* a block the download has not written completely
          * ends the playback; the download goes on. */
-        debug_printf("pl: block %lu not downloaded (%lu), end\n", (unsigned long)read_pos,
+        debug_printf("pl: block %lu not loaded (%lu), end\n", (unsigned long)read_pos,
                      (unsigned long)cloud_dl.readable);
         dl_starved = true;
         return -1;
     }
+    CRITICAL_ENTER();
+    uint8_t *a = ahead_len == n && ahead_pos == read_pos ? ahead : NULL;
+    reading = a != NULL;
+    CRITICAL_EXIT();
+    ahead_len = 0;
+    if (a)
+    {
+        memcpy(block, a, n);
+        reading = false;
+        stats.ahead++;
+        return (int)n;
+    }
     UINT got;
+    uint32_t t0 = tick_ms();
     FRESULT r = f_lseek(&file, read_pos);
     if (r == FR_OK)
     {
         r = f_read(&file, block, n, &got);
+    }
+    /* the longest card read, a wait behind a download's write included */
+    if (tick_ms() - t0 > stats.read_max)
+    {
+        stats.read_max = tick_ms() - t0;
     }
     if (r == FR_DISK_ERR && !prompt_mode)
     {
@@ -1301,6 +1333,79 @@ static int read_block(void)
         return -1;
     }
     return (int)n;
+}
+
+/* The next block into ahead, when it is on the card and no download
+ * write runs; failing, read_block() reads it. */
+static void read_ahead(void)
+{
+    want_card = false;
+    if (!ahead_on || ahead_len || jump_start || read_pos >= size || read_pos >= end_pos)
+    {
+        return;
+    }
+    uint32_t n = size - read_pos < TAF_BLOCK ? size - read_pos : TAF_BLOCK;
+    if (downloading && read_pos + n > cloud_dl.readable && !cloud_dl.done)
+    {
+        return;
+    }
+    CRITICAL_ENTER();
+    uint8_t *a = ahead;
+    reading = a && !writing;
+    want_card = a && !reading;
+    CRITICAL_EXIT();
+    if (!reading)
+    {
+        return;
+    }
+    UINT got;
+    if (f_lseek(&file, read_pos) == FR_OK && f_read(&file, a, n, &got) == FR_OK && got == n)
+    {
+        ahead_pos = read_pos;
+        ahead_len = n;
+    }
+    reading = false;
+}
+
+void player_write_begin(void)
+{
+    /* a reading ahead the player waits for goes first, 100 ms at most */
+    for (unsigned i = 0;; i++)
+    {
+        CRITICAL_ENTER();
+        bool go = !reading && (!want_card || i >= 50);
+        writing = go;
+        CRITICAL_EXIT();
+        if (go)
+        {
+            return;
+        }
+        vTaskDelay(pdMS_TO_TICKS(2));
+    }
+}
+
+void player_write_end(void)
+{
+    writing = false;
+}
+
+void player_ahead_begin(uint8_t *buf)
+{
+    ahead_len = 0;
+    ahead = buf;
+}
+
+void player_ahead_end(void)
+{
+    CRITICAL_ENTER();
+    ahead = NULL;
+    CRITICAL_EXIT();
+    while (reading)
+    {
+        vTaskDelay(1);
+    }
+    ahead_len = 0;
+    want_card = false;
 }
 
 /* after block 1, the jump to J when it is usable. */
@@ -1325,7 +1430,7 @@ static void start_jump(void)
     }
     else
     {
-        debug_printf("pl: start %lu not usable, from 0 (287)\n", (unsigned long)j);
+        debug_printf("pl: start %lu bad, from 0 (287)\n", (unsigned long)j);
     }
 }
 
@@ -1383,7 +1488,7 @@ static void download_watch(void)
     {
         retry_wait = d->data ? 1000 : (retry_wait ? (retry_wait < 8000 ? retry_wait * 2 : 8000) : 1000);
         retry_at = now + retry_wait;
-        debug_printf("pl: download broke at %lu (%s), retry %lu ms\n", (unsigned long)d->pos,
+        debug_printf("pl: download broke at %lu, %s, retry %lu ms\n", (unsigned long)d->pos,
                      cloud_error_name(d->error), (unsigned long)retry_wait);
         return;
     }
@@ -1408,10 +1513,10 @@ static void invalid_block(uint32_t x)
         return;
     }
     uint32_t v = taf_resume_offset(&file, size, hdr.audio_id, block);
-    debug_printf("pl: invalid block %lu, valid to %lu (6468)\n", (unsigned long)x, (unsigned long)v);
+    debug_printf("pl: bad block %lu, ok to %lu (6468)\n", (unsigned long)x, (unsigned long)v);
     if (v == x)
     {
-        debug_printf("pl: valid to failing block (6475)\n");
+        debug_printf("pl: valid to bad block (6475)\n");
         return;
     }
     char path[32];
@@ -1431,6 +1536,8 @@ static void play_content(void)
     stop_why = "?";
     out = NULL;
     read_pos = TAF_BLOCK;
+    ahead_len = 0;
+    ahead_on = true;
     started_ms = last_jump_ms = tick_ms();
     bool ended = false, error = false, started = false;
     uint32_t t0 = tick_ms();
@@ -1545,17 +1652,18 @@ static void play_content(void)
         }
         if (!idle)
         {
-            debug_printf("pl: output not done in 3 s\n");
+            debug_printf("pl: output busy 3 s\n");
         }
     }
+    ahead_on = want_card = false;
     f_close(&file);
     playing = false;
-    debug_printf("pl: %s at %lu, %lu ms, %lu pk, max %lu ms, und %lu\n",
+    debug_printf("pl: %s at %lu, %lu ms, %lu pk, max %lu ms, und %lu, rd %lu ms, ra %lu\n",
                  stop_request ? stop_why : error ? "error"
                                                  : "end",
                  (unsigned long)read_pos,
                  (unsigned long)(tick_ms() - t0), (unsigned long)stats.packets, (unsigned long)stats.max_ms,
-                 (unsigned long)audio_out_underruns());
+                 (unsigned long)audio_out_underruns(), (unsigned long)stats.read_max, (unsigned long)stats.ahead);
     content_ended = ended;
     if (ended && !prompt_mode)
     {
@@ -1614,7 +1722,7 @@ static int failure_prompt(cloud_error_t e, int status)
     case 3:
         return 20;
     default:
-        debug_printf("pl: no prompt in state %u\n", net_state());
+        debug_printf("pl: no prompt, state %u\n", net_state());
         return -1;
     }
 }
@@ -1675,7 +1783,7 @@ static bool language_chapter(void)
     }
     /* a start beyond 32 bits is beyond the file: J not usable (287) */
     jump_start = start < 0xFFFFFFFFull ? (uint32_t)start : 0xFFFFF000u;
-    debug_printf("pl: language chapter %u from %lu (7376)\n", l + 1, (unsigned long)jump_start);
+    debug_verbose("pl: language chapter %u from %lu (7376)\n", l + 1, (unsigned long)jump_start);
     return true;
 }
 
@@ -1811,7 +1919,7 @@ static void play_file(const uint8_t uid[8])
         x_shuffle = false;
         if (resume_j && (uint64_t)resume_j + TAF_BLOCK > cloud_dl.readable && !cloud_dl.done)
         {
-            debug_printf("pl: resume %lu not downloaded yet (%lu)\n", (unsigned long)resume_j,
+            debug_printf("pl: resume %lu not loaded (%lu)\n", (unsigned long)resume_j,
                          (unsigned long)cloud_dl.readable);
             resume_j = 0;
         }
@@ -1897,7 +2005,7 @@ static bool wait_download(bool *removed)
                 *removed = true;
                 log_event(EVT_PLAYBACK_STOPPED, NULL);
                 xp_remove();
-                debug_printf("pl: removed while downloading\n");
+                debug_printf("pl: removed while loading\n");
                 return false;
             }
             debug_printf("pl: placed while preparing (6157)\n");
@@ -2020,7 +2128,7 @@ static void start_content(const uint8_t uid[8], const uint8_t *token)
             /* the cached file, if complete. */
             if (taf_open(&file, path, &hdr, block, true) == TAF_COMPLETE)
             {
-                debug_printf("pl: download failed (%s), cached file\n", cloud_error_name(d->error));
+                debug_printf("pl: download FAILED %s, cached\n", cloud_error_name(d->error));
                 play_file(uid);
                 return;
             }
@@ -2084,7 +2192,7 @@ static void play_prompt(unsigned nn, bool wait)
     }
     if (!ok)
     {
-        debug_printf("pl: prompt %u skipped, no file (1693)\n", nn);
+        debug_printf("pl: prompt %u, no file (1693)\n", nn);
         return;
     }
     debug_printf("pl: sound prompt %u\n", nn);
@@ -2146,7 +2254,7 @@ static void remote_play(void)
     CRITICAL_ENTER();
     memcpy(u, rc_uid, 8);
     CRITICAL_EXIT();
-    debug_printf("pl: remote play\n");
+    debug_verbose("pl: remote play\n");
     ledui_request(LED_ACTIVITY);
     log_event(EVT_PLAYBACK_STARTING, u);
     if (!xp_place(u))
@@ -2314,7 +2422,7 @@ static void power_off_work(void)
     if (!cloud_dl.active && f_getfree("", &free_n, &fs) == FR_OK)
     {
         uint32_t n = fs->n_fatent - 2;
-        debug_printf("pl: housekeeping\n");
+        debug_verbose("pl: housekeeping\n");
         sd_room(n * 10 / 100, n * 30 / 100, NULL, block);
     }
     power_off_done = true;
@@ -2341,7 +2449,7 @@ static void task(void *arg)
     (void)arg;
     if (opus_decoder_get_size(2) > (int)sizeof dec_mem)
     {
-        debug_printf("pl: decoder needs %d B, no playback\n", opus_decoder_get_size(2));
+        debug_printf("pl: decoder %d B, no play\n", opus_decoder_get_size(2));
         dec_too_small = true;
     }
     xp_start();
@@ -2398,7 +2506,7 @@ static void task(void *arg)
             }
             else
             {
-                debug_printf("pl: prompt %u skipped, no output\n", nn);
+                debug_printf("pl: prompt %u, no output\n", nn);
             }
             set_busy(false);
             if (nn == 0)
@@ -2419,7 +2527,7 @@ static void task(void *arg)
             cloud_sync_abort();
             if (!held_logged)
             {
-                debug_printf("pl: figure held (round/sync/setup)\n");
+                debug_verbose("pl: figure held\n");
             }
             held_logged = true;
             event_t e;

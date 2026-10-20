@@ -53,6 +53,22 @@
  * 2026-10-14). */
 static uint8_t work[TAF_BLOCK] __attribute__((aligned(4)));
 
+/* Memory of the cloud activity outside the receive loop of a content
+ * download: bodies (items, prompts, freshness), the request text and the
+ * freshness answer. Within that loop none of it is in use, and the player
+ * reads ahead into it (player_ahead_begin/end). */
+static union
+{
+    struct
+    {
+        uint8_t dl_buf[1400];
+        char req[512];
+        uint32_t fresh[126]; /* fresh_t */
+    } c;
+    uint8_t ahead[TAF_BLOCK];
+} share;
+#define dl_buf share.c.dl_buf
+
 /* Figure events wait while an online round or a
  * synchronisation runs. */
 static volatile bool round_running, sync_running;
@@ -233,7 +249,7 @@ static const char *config_parse(char *text, server_cfg_t *c)
                 }
                 else
                 {
-                    debug_printf("cloud: ntp \"%s\" invalid, %s used\n", val, c->ntp);
+                    debug_printf("cloud: ntp \"%s\" bad, %s\n", val, c->ntp);
                 }
             }
 #endif
@@ -255,7 +271,7 @@ static const char *config_parse(char *text, server_cfg_t *c)
         }
         else
         {
-            debug_printf("cloud: ca \"%s\" invalid, /cert/ca.der used\n", ca);
+            debug_printf("cloud: ca \"%s\" bad, /cert/ca.der\n", ca);
         }
     }
     if (!have_host)
@@ -344,9 +360,13 @@ typedef struct
     uint32_t session;
     uint32_t start, deadline_ms; /* 0: no deadline */
     volatile bool *cancel;       /* set before the connect */
-    bool one_lookup;             /* the log host: a single lookup */
-    uint8_t act;                 /* activity marked at each check */
-    long err;                    /* driver code of a failed lookup or connect */
+    uint16_t grace_ms;           /* a cancel after the request waits this long for the answer */
+    bool sent;                   /* the request is sent */
+    bool cancel_seen;            /* a check saw the cancel, at cancel_at */
+    uint32_t cancel_at;
+    bool one_lookup; /* the log host: a single lookup */
+    uint8_t act;     /* activity marked at each check */
+    long err;        /* driver code of a failed lookup or connect */
 } link_t;
 
 typedef struct
@@ -364,12 +384,29 @@ typedef struct
 
 /* Called between network operations, at least once per second (receive
  * timeout 1 s): also the progress mark of the activity. */
-static cloud_error_t checks(const link_t *c)
+static cloud_error_t checks(link_t *c)
 {
     monitor_mark((activity_t)c->act);
-    if (net_session() != c->session || (c->cancel && *c->cancel))
+    if (net_session() != c->session)
     {
         return CE_CANCELLED;
+    }
+    if (c->cancel && *c->cancel)
+    {
+        if (!c->sent || !c->grace_ms)
+        {
+            return CE_CANCELLED;
+        }
+        uint32_t now = tick_ms();
+        if (!c->cancel_seen)
+        {
+            c->cancel_seen = true;
+            c->cancel_at = now;
+        }
+        else if (now - c->cancel_at >= c->grace_ms)
+        {
+            return CE_CANCELLED;
+        }
     }
     if (c->deadline_ms && tick_ms() - c->start >= c->deadline_ms)
     {
@@ -440,7 +477,7 @@ static long nobufs(long r)
         nobufs_count++;
         if (!restart_wanted)
         {
-            debug_printf("cloud: ENOBUFS -> restart\n");
+            debug_printf("cloud: ENOBUFS, restart\n");
         }
         restart_wanted = true;
     }
@@ -845,7 +882,7 @@ static uint32_t cloud_build = CLOUD_BUILD;
 static cloud_error_t request(conn_t *c, const char *method, const char *path, const char *extra,
                              const void *body, unsigned body_len)
 {
-    static char req[512] LOWRAM; /* written before use: no-init low SRAM */
+    char *req = share.c.req;
     char length[32] = "";
     if (body)
     {
@@ -853,16 +890,16 @@ static cloud_error_t request(conn_t *c, const char *method, const char *path, co
     }
 #ifdef CFW_ESP32
     /* the User-Agent of the original ESP firmware. */
-    int n = snprintf(req, sizeof req, "%s %s HTTP/1.1\r\nHost: %s\r\nUser-Agent: %s\r\n%s%sX-CFW-Build: %lu\r\n\r\n",
+    int n = snprintf(req, sizeof share.c.req, "%s %s HTTP/1.1\r\nHost: %s\r\nUser-Agent: %s\r\n%s%sX-CFW-Build: %lu\r\n\r\n",
                      method, path, cfg.host, update_original_agent(), length, extra ? extra : "",
                      (unsigned long)CFW_BUILD_TIME);
 #else
-    int n = snprintf(req, sizeof req,
+    int n = snprintf(req, sizeof share.c.req,
                      "%s %s HTTP/1.1\r\nHost: %s\r\nUser-Agent: TB/%lu SP/%lu HW/%lu\r\n%s%sX-CFW-Build: %lu\r\n\r\n",
                      method, path, cfg.host, (unsigned long)cloud_build, (unsigned long)net_sp_version(),
                      (unsigned long)hw_word(), length, extra ? extra : "", (unsigned long)CFW_BUILD_TIME);
 #endif
-    if (n <= 0 || n >= (int)sizeof req)
+    if (n <= 0 || n >= (int)sizeof share.c.req)
     {
         return CE_PROTOCOL;
     }
@@ -873,6 +910,7 @@ static cloud_error_t request(conn_t *c, const char *method, const char *path, co
     }
     if (!e)
     {
+        c->k.sent = true;
         e = read_head(c);
     }
     return e;
@@ -890,13 +928,15 @@ static void link_init(link_t *k, uint32_t session, uint32_t deadline, volatile b
 }
 
 /* A whole exchange with a new connection; cancel (may be
- * NULL) is polled from the name lookup on. */
-static cloud_error_t exchange(conn_t *c, uint32_t session, uint32_t deadline, volatile bool *cancel,
-                              const char *method, const char *path, const char *extra, const void *body,
-                              unsigned body_len)
+ * NULL) is polled from the name lookup on, after the request
+ * only once grace_ms have passed since it was seen. */
+static cloud_error_t exchange_grace(conn_t *c, uint32_t session, uint32_t deadline, volatile bool *cancel,
+                                    uint16_t grace_ms, const char *method, const char *path, const char *extra,
+                                    const void *body, unsigned body_len)
 {
     memset(c, 0, sizeof *c);
     link_init(&c->k, session, deadline, cancel);
+    c->k.grace_ms = grace_ms;
     /* No request without a network session: checks() would
      * pass with session 0 == net_session() 0. */
     cloud_error_t e = session ? open_conn(&c->k) : CE_CANCELLED;
@@ -911,6 +951,13 @@ static cloud_error_t exchange(conn_t *c, uint32_t session, uint32_t deadline, vo
     debug_printf("cloud: %s %s -> %d, length %lu%s (%s)\n", method, path, e ? -1 : c->status,
                  (unsigned long)c->length, c->length_bad ? " malformed" : "", cloud_error_name(e));
     return e;
+}
+
+static cloud_error_t exchange(conn_t *c, uint32_t session, uint32_t deadline, volatile bool *cancel,
+                              const char *method, const char *path, const char *extra, const void *body,
+                              unsigned body_len)
+{
+    return exchange_grace(c, session, deadline, cancel, 0, method, path, extra, body, body_len);
 }
 
 /* --- log-connection outcome --- */
@@ -1012,7 +1059,7 @@ static bool time_request(uint32_t s)
     close_conn(&c);
     if (got < c.length)
     {
-        debug_printf("cloud: time body incomplete (%s)\n", cloud_error_name(e));
+        debug_printf("cloud: time body %s\n", cloud_error_name(e));
         return false;
     }
     const char *p = body;
@@ -1051,7 +1098,7 @@ static bool time_request(uint32_t s)
     }
     server_answered();
     time_error = CE_OK;
-    debug_printf("cloud: clock %lu (%04lu-%02lu-%02lu %02lu:%02lu:%02lu)\n", (unsigned long)t,
+    debug_printf("cloud: clock %lu %04lu-%02lu-%02lu %02lu:%02lu:%02lu\n", (unsigned long)t,
                  (unsigned long)cv.year, (unsigned long)cv.month, (unsigned long)cv.day, (unsigned long)cv.hour,
                  (unsigned long)cv.minute, (unsigned long)cv.second);
     return true;
@@ -1116,7 +1163,7 @@ static void cloud_build_read(void)
     {
         cloud_build = b;
     }
-    debug_printf("cloud: identity %lu\n", (unsigned long)cloud_build);
+    debug_verbose("cloud: identity %lu\n", (unsigned long)cloud_build);
 }
 #endif
 
@@ -1169,7 +1216,6 @@ static uint32_t current_version(unsigned id)
 }
 
 static bool update_checked;
-static uint8_t dl_buf[1400] LOWRAM; /* bodies: items, content, prompts, freshness */
 
 /* Item 3: the body streamed into
  * the update module; true when the image is installed. */
@@ -1177,7 +1223,7 @@ static bool install_image(conn_t *c)
 {
     if (c->length_bad || !c->length || !update_begin(c->length))
     {
-        debug_printf("cloud: image of %lu bytes%s refused\n", (unsigned long)c->length,
+        debug_printf("cloud: image %lu B%s refused\n", (unsigned long)c->length,
                      c->length_bad ? " (malformed length)" : "");
         return false;
     }
@@ -1189,7 +1235,7 @@ static bool install_image(conn_t *c)
         long n = read_body(c, dl_buf, sizeof dl_buf, &e); /* checks() marks the activity */
         if (n <= 0 || !update_write(dl_buf, (size_t)n))
         {
-            debug_printf("cloud: image ended at %lu of %lu (%s)\n", (unsigned long)got,
+            debug_printf("cloud: image end %lu of %lu, %s\n", (unsigned long)got,
                          (unsigned long)c->length, n <= 0 ? cloud_error_name(e ? e : CE_TRANSFER) : "write");
             update_abort();
             return false;
@@ -1231,7 +1277,7 @@ static bool install_page(conn_t *c)
     {
         f_unlink("/cfw/setup.tmp");
     }
-    debug_printf("cloud: setup page %s, %lu bytes\n", ok ? "installed" : "abandoned", (unsigned long)got);
+    debug_printf("cloud: setup page %s, %lu B\n", ok ? "installed" : "abandoned", (unsigned long)got);
     return ok;
 }
 
@@ -1427,7 +1473,7 @@ static bool prepare(FIL *f, const char *path, uint32_t z, uint32_t o, const uint
         sd_trash(uid);
         if (o)
         {
-            debug_printf("cloud: %s size not %lu, abandoned\n", path, (unsigned long)z);
+            debug_printf("cloud: %s not %lu B, abort\n", path, (unsigned long)z);
             return false;
         }
         exists = false;
@@ -1436,20 +1482,20 @@ static bool prepare(FIL *f, const char *path, uint32_t z, uint32_t o, const uint
     {
         if (!sd_room_for(z, &dl_cancel, work))
         {
-            debug_printf("cloud: no room for %lu B, download abandoned\n", (unsigned long)z);
+            debug_printf("cloud: no room for %lu B, abort\n", (unsigned long)z);
             sd_trash(uid);
             return false;
         }
         if (!sd_make_dirs(path) || f_open(f, path, FA_WRITE | FA_CREATE_ALWAYS) != FR_OK)
         {
-            debug_printf("cloud: %s not created, abandoned\n", path);
+            debug_printf("cloud: %s not created, abort\n", path);
             sd_trash(uid);
             return false;
         }
     }
     else if (f_open(f, path, FA_WRITE | FA_OPEN_EXISTING) != FR_OK)
     {
-        debug_printf("cloud: %s not writable, abandoned\n", path);
+        debug_printf("cloud: %s not writable, abort\n", path);
         sd_trash(uid);
         return false;
     }
@@ -1458,7 +1504,7 @@ static bool prepare(FIL *f, const char *path, uint32_t z, uint32_t o, const uint
      * file, and one whose chain is broken, goes to the trash. */
     if (f_lseek(f, z) != FR_OK || f_tell(f) != z || f_sync(f) != FR_OK || f_lseek(f, o) != FR_OK)
     {
-        debug_printf("cloud: %s not extendable to %lu B, abandoned\n", path, (unsigned long)z);
+        debug_printf("cloud: %s not %lu B long, abort\n", path, (unsigned long)z);
         f_close(f);
         sd_trash(uid);
         return false;
@@ -1486,7 +1532,7 @@ static void content_download(const job_t *j)
         /* Without a server configuration as a failed name lookup; without a
          * network session the request is not made and the connection state
          * selects the indication. */
-        debug_printf("cloud: content request without %s\n", cfg.valid ? "network" : "server configuration");
+        debug_printf("cloud: content without %s\n", cfg.valid ? "network" : "server configuration");
         dl_end(serial, cfg.valid ? CE_CANCELLED : CE_NAME, session);
         return;
     }
@@ -1552,7 +1598,7 @@ static void content_download(const job_t *j)
     if (e)
     {
         close_conn(&c);
-        debug_printf("cloud: content %s failed (%s)\n", ruid, cloud_error_name(e));
+        debug_printf("cloud: content %s FAILED, %s\n", ruid, cloud_error_name(e));
         dl_end(serial, e, session);
         return;
     }
@@ -1588,8 +1634,9 @@ static void content_download(const job_t *j)
      * the 1500 transfers per MB (device run 2026-10-14, 30 KB/s). work is
      * free once prepare() is done. Rate diagnostics at the end: time waiting
      * for the network, in f_write and in the Opus decoder. */
-    uint32_t r_net = 0, r_wr = 0;
+    uint32_t r_net = 0, r_wr = 0, wr_max = 0, wr_slow = 0;
     player_decode_ms = 0;
+    player_ahead_begin(share.ahead);
     unsigned fill = 0; /* bytes in work from pos - fill on, not yet written */
     while (pos < z)
     {
@@ -1617,38 +1664,51 @@ static void content_download(const job_t *j)
             continue;
         }
         UINT w;
-        if (f_write(&f, work, fill, &w) != FR_OK || w != fill)
+        player_write_begin();
+        uint32_t tc = tick_ms();
+        FRESULT fr = f_write(&f, work, fill, &w);
+        player_write_end();
+        if (fr != FR_OK || w != fill)
         {
-            debug_printf("cloud: write to %s failed at %lu\n", path, (unsigned long)(pos - fill));
+            debug_printf("cloud: write %s FAILED at %lu\n", path, (unsigned long)(pos - fill));
             e = CE_CANCELLED;
             pos -= fill - (unsigned)w;
             fill = 0;
             break;
         }
         fill = 0;
+        uint32_t tw = tick_ms() - tc;
         r_wr += tick_ms() - tb;
+        if (tw > wr_max)
+        {
+            wr_max = tw;
+        }
+        wr_slow += tw >= 50; /* half the output ring */
         /* FatFs writes a sector of the file buffer back only when the
          * next sector is begun (ff.c, f_write): the sector holding the
          * last byte written may still be in the buffer. */
         dl_progress(serial, pos, (pos - 1) & ~511u, true);
     }
+    player_ahead_end(); /* share is the cloud activity's again */
     /* After a broken transfer the bytes already received are kept, so a
      * resumed download starts behind them. */
     if (fill)
     {
         UINT w = 0;
+        player_write_begin();
         (void)f_write(&f, work, fill, &w);
+        player_write_end();
         pos -= fill - (unsigned)w;
     }
     close_conn(&c);
     f_close(&f);
-    debug_printf("cloud: rate net %lu wr %lu dec %lu ms\n", (unsigned long)r_net, (unsigned long)r_wr,
-                 (unsigned long)player_decode_ms);
+    debug_printf("cloud: rate net %lu wr %lu dec %lu ms, wr max %lu, %lu >= 50\n", (unsigned long)r_net,
+                 (unsigned long)r_wr, (unsigned long)player_decode_ms, (unsigned long)wr_max, (unsigned long)wr_slow);
     if (!e && pos == z)
     {
         sd_set_outdated(path, false); /* complete: the mark set by prepare() goes */
     }
-    debug_printf("cloud: download of %s %s at %lu of %lu after %lu ms\n", path, e ? "ended" : "complete",
+    debug_printf("cloud: download of %s %s at %lu of %lu, %lu ms\n", path, e ? "ended" : "complete",
                  (unsigned long)pos, (unsigned long)z, (unsigned long)(tick_ms() - t0));
     if (e && pos <= 8192)
     {
@@ -1742,7 +1802,7 @@ void cloud_claim(const uint8_t uid[8], const uint8_t *token)
     if (!queue || uxQueueMessagesWaiting(queue) || cloud_dl.active || job_running || round_running ||
         sync_running)
     {
-        debug_printf("cloud: claim not sent, transfer busy\n");
+        debug_printf("cloud: claim not sent, busy\n");
         return;
     }
     xQueueSend(queue, &j, 0);
@@ -1772,7 +1832,7 @@ static void claim(const job_t *j)
     }
     else if (!e && c.status == 204)
     {
-        debug_printf("cloud: claim answer body %lu B: failed\n", (unsigned long)c.length);
+        debug_printf("cloud: claim body %lu B FAILED\n", (unsigned long)c.length);
     }
     close_conn(&c);
 }
@@ -2118,13 +2178,13 @@ static void fresh_apply(const fresh_t *r)
         {
             if (f == 3 || f == 7)
             {
-                debug_printf("cloud: volume limit %d ignored\n", v);
+                debug_printf("cloud: volume limit %d off\n", v);
             }
             continue;
         }
         if (*dst != v)
         {
-            debug_printf("cloud: setting %d changed %u -> %d\n", f, *dst, v);
+            debug_verbose("cloud: setting %d %u -> %d\n", f, *dst, v);
             *dst = (uint8_t)v;
             limits |= f == 3 || f == 7;
         }
@@ -2168,7 +2228,7 @@ static cloud_error_t prompt_download(unsigned nn, uint32_t session)
     ok = opened && f_lseek(&f, z) == FR_OK && f_tell(&f) == z && f_sync(&f) == FR_OK && f_lseek(&f, 0) == FR_OK;
     if (!ok)
     {
-        debug_printf("cloud: %s not prepared for %lu B\n", tmp, (unsigned long)z);
+        debug_printf("cloud: %s not ready for %lu B\n", tmp, (unsigned long)z);
         if (opened)
         {
             f_close(&f);
@@ -2223,7 +2283,7 @@ void cloud_sync_request(bool user)
     {
         /* a session started while a download runs fails at
          * once. */
-        debug_printf("cloud: sync during a download: failed\n");
+        debug_printf("cloud: sync FAILED, download\n");
         player_sync_result(CE_CANCELLED, true);
         return;
     }
@@ -2295,7 +2355,7 @@ static cloud_error_t fresh_session(uint32_t s)
     unsigned reported = 0, prompt = 0;
     prompts_noted = 0;
     sync_abort = false;
-    debug_printf("cloud: freshness check session\n");
+    debug_printf("cloud: freshness session\n");
     for (;;)
     {
         unsigned seen = 0, n = scan(reported, 60, dl_buf, &seen), len = n * 16;
@@ -2313,8 +2373,12 @@ static cloud_error_t fresh_session(uint32_t s)
         {
             return CE_CANCELLED;
         }
+        /* A placement after the request still lets the answer arrive
+         * for up to 2 s: it carries the hello request (field 101), asked
+         * for only here. */
         conn_t c;
-        cloud_error_t e = exchange(&c, s, 60000, &sync_abort, "POST", "/v1/freshness-check", NULL, dl_buf, len);
+        cloud_error_t e =
+            exchange_grace(&c, s, 60000, &sync_abort, 2000, "POST", "/v1/freshness-check", NULL, dl_buf, len);
         if (!e && (c.status < 200 || c.status > 299 || c.length_bad || c.length > 1024))
         {
             e = c.status >= 200 && c.status <= 299 ? CE_PROTOCOL : CE_STATUS;
@@ -2338,13 +2402,14 @@ static cloud_error_t fresh_session(uint32_t s)
         {
             return e;
         }
-        static fresh_t r;
-        if (!fresh_decode(dl_buf, got, &r))
+        _Static_assert(sizeof(fresh_t) <= sizeof share.c.fresh, "fresh_t outgrows its place");
+        fresh_t *r = (fresh_t *)share.c.fresh;
+        if (!fresh_decode(dl_buf, got, r))
         {
             return CE_PROTOCOL;
         }
-        debug_verbose("cloud: freshness answer: %u marks\n", r.n_marks);
-        fresh_apply(&r);
+        debug_verbose("cloud: freshness answer: %u marks\n", r->n_marks);
+        fresh_apply(r);
         ext_answer(dl_buf, got); /* fields 100 and 101 */
         if (n < 60 && prompt >= 25)
         {
@@ -2465,7 +2530,7 @@ static cloud_error_t sync_run(uint32_t s, bool user)
     page_check(s);
     sync_running = false;
     monitor_sync_activity(false);
-    debug_printf("cloud: freshness check session %s\n", e ? cloud_error_name(e) : "complete");
+    debug_printf("cloud: freshness session %s\n", e ? cloud_error_name(e) : "complete");
     if (e == CE_NAME)
     {
         net_cloud_state(s, 4);
@@ -2502,7 +2567,7 @@ static void online_round(uint32_t s)
 #endif
     if (!cfg.valid)
     {
-        debug_printf("cloud: no server, round fails\n");
+        debug_printf("cloud: no server, round FAILED\n");
         net_cloud_first_result(s, CE_NAME);
         return; /* no log connection either */
     }
@@ -2657,12 +2722,12 @@ static void cert_input(void)
         int r = ok ? cloud_cert_put(i, size) : -1;
         if (r < 0)
         {
-            debug_printf("cloud: %s not one DER element, left on card\n", card);
+            debug_printf("cloud: %s no DER, kept\n", card);
         }
         if (!r)
         {
             f_unlink(card);
-            debug_printf("cloud: %s equals flash, deleted from card\n", card);
+            debug_printf("cloud: %s as in flash, deleted\n", card);
         }
     }
 }
@@ -2692,7 +2757,7 @@ const char *cloud_server_forget(void)
             r = f_close(&f) != FR_OK || w != (UINT)n ? FR_DISK_ERR : r;
         }
     }
-    debug_printf("cloud: server configuration deleted (%d), %s %ld\n", (int)r, cfg.ca, d);
+    debug_printf("cloud: config deleted %d, %s %ld\n", (int)r, cfg.ca, d);
     return r == FR_OK || r == FR_NO_FILE ? "ok" : "card";
 }
 

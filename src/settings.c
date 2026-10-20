@@ -272,7 +272,7 @@ void settings_load(void)
     }
     else
     {
-        debug_printf("settings: sfx.bin header bad\n");
+        debug_printf("settings: sfx.bin bad\n");
     }
 #if PORT_LANGUAGE_KEY
     /* a key of its own, default the archive's first set. */
@@ -376,5 +376,5 @@ void settings_set_language(uint8_t l)
     }
 #endif
     language = l;
-    debug_printf("settings: language %u stored\n", l);
+    debug_verbose("settings: language %u stored\n", l);
 }

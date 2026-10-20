@@ -28,5 +28,5 @@ void bus_recovery(void)
     i2c_init();
     tick_wait(100);
     accel_restore();
-    debug_printf("i2c: bus recovery done (%lu ms)\n", (unsigned long)(tick_ms() - t0));
+    debug_printf("i2c: recovery %lu ms\n", (unsigned long)(tick_ms() - t0));
 }

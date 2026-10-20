@@ -220,7 +220,7 @@ static void interrupt_request(void)
     }
     restart_requested = true;
     panic_power_phase(PHASE_RESTARTING);
-    debug_printf("pwr: off interrupted, restart\n");
+    debug_printf("pwr: off broken, restart\n");
 }
 
 bool power_shutting_down(void)
@@ -352,7 +352,7 @@ static void save(const pwrstate_t *p, bool soft_off)
     uint32_t w[2];
     pwrstate_encode(p, soft_off, w);
     retained_store_state(w[0], w[1]);
-    debug_printf("pwr: saved %08lx %08lx\n", (unsigned long)w[0], (unsigned long)w[1]);
+    debug_verbose("pwr: saved %08lx %08lx\n", (unsigned long)w[0], (unsigned long)w[1]);
 }
 
 void power_restore(void)
@@ -478,7 +478,7 @@ void power_wake_check(void)
         return;
     }
     uint32_t mv = battery_wake_measure();
-    debug_printf("power: taken off the station while off, %lu mV\n", (unsigned long)mv);
+    debug_printf("pwr: off station, %lu mV\n", (unsigned long)mv);
     bool green = mv > 3299;
     for (int phase = 0; phase < 10; phase++)
     {
@@ -499,7 +499,7 @@ void power_wake_check(void)
             if (board_on_station() || board_ear_big_pressed() || board_ear_small_pressed())
             {
                 led_set(0, 0, 0);
-                debug_printf("power: input active, start continues\n");
+                debug_printf("pwr: input, start\n");
                 return;
             }
         }

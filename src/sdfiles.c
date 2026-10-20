@@ -99,7 +99,7 @@ void sd_move_aside(const uint8_t uid[8], const char *dir)
         }
         break;
     }
-    debug_printf("sd: %s deleted instead of moved to %s\n", path, dir);
+    debug_printf("sd: %s deleted, not moved to %s\n", path, dir);
     f_unlink(path);
 }
 
@@ -274,7 +274,7 @@ bool sd_room(uint32_t threshold, uint32_t target, volatile bool *stop, uint8_t *
     }
     char path[40] = "TRASHCAN";
     delete_tree(path, 0);
-    debug_printf("sd: trash deleted for room\n");
+    debug_verbose("sd: trash deleted for room\n");
     while (free_clusters(&total) < target)
     {
         if (stop && *stop)
@@ -288,7 +288,7 @@ bool sd_room(uint32_t threshold, uint32_t target, volatile bool *stop, uint8_t *
         }
         f_unlink(victim);
         FILINFO fi;
-        debug_printf("sd: oldest content %s deleted for room\n", victim);
+        debug_printf("sd: oldest %s deleted for room\n", victim);
         if (f_stat(victim, &fi) == FR_OK)
         {
             return true;

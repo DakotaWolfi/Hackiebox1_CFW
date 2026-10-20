@@ -150,7 +150,7 @@ bool codec_configure(bool *headset)
         {
             return ok;
         }
-        debug_printf("codec: again after recovery\n");
+        debug_printf("codec: recovered\n");
     }
     return false;
 }

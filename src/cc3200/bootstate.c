@@ -159,7 +159,7 @@ static bool update(void (*change)(uint8_t s[32], uint8_t arg), uint8_t arg)
 
     if (!handover_get()->valid || !state_path(path, sizeof path))
     {
-        debug_printf("bootstate: no state file configured\n");
+        debug_printf("bootstate: no state file\n");
         return false;
     }
     bool in_place = f_open(&f, path, FA_READ | FA_WRITE) == FR_OK;
@@ -177,7 +177,7 @@ static bool update(void (*change)(uint8_t s[32], uint8_t arg), uint8_t arg)
         s[10] = 255;
         if (f_open(&f, path, FA_WRITE | FA_CREATE_ALWAYS) != FR_OK)
         {
-            debug_printf("bootstate: %s cannot be created\n", path);
+            debug_printf("bootstate: %s not created\n", path);
             return false;
         }
     }
@@ -186,7 +186,7 @@ static bool update(void (*change)(uint8_t s[32], uint8_t arg), uint8_t arg)
     memcpy(s + 28, &crc, 4);
     bool ok = f_lseek(&f, 0) == FR_OK && f_write(&f, s, 32, &n) == FR_OK && n == 32;
     ok = f_close(&f) == FR_OK && ok;
-    debug_printf("bootstate: %s %s (active %u next %u kind %u result %u)\n", path, ok ? "written" : "NOT written",
+    debug_printf("bootstate: %s %s act %u next %u kind %u result %u\n", path, ok ? "written" : "NOT written",
                  s[4], s[5], s[6], s[9]);
     return ok;
 }
@@ -238,7 +238,7 @@ static uint8_t checks_ok, checks_failed; /* bit per boot_check_t */
 
 static void __attribute__((noreturn)) restart_unconfirmed(const char *why)
 {
-    debug_printf("bootstate: trial not confirmed (%s, ok %x failed %x), restart\n", why, checks_ok, checks_failed);
+    debug_printf("bootstate: trial unconfirmed (%s, ok %x bad %x), restart\n", why, checks_ok, checks_failed);
     vTaskDelay(100);
     MAP_PRCMMCUReset(true);
     for (;;)

@@ -32,6 +32,16 @@ bool player_busy(void);
 /* Milliseconds spent in the Opus decoder, for the download rate
  * diagnostics (cloud.c resets it). */
 extern uint32_t player_decode_ms;
+/* Around each card write of the content download: the playing content's
+ * reading ahead is not held up by the write, and one it waits for goes
+ * first. */
+void player_write_begin(void);
+void player_write_end(void);
+/* The cloud activity lends buf (TAF_BLOCK bytes) for the reading ahead
+ * while a content download writes; player_ahead_end returns once the
+ * player no longer uses it. */
+void player_ahead_begin(uint8_t *buf);
+void player_ahead_end(void);
 
 /* Sound prompt nn; wait: 1000 ms before it. */
 void player_prompt(unsigned nn, bool wait);

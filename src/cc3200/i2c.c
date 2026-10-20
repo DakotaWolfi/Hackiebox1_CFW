@@ -86,7 +86,7 @@ static i2c_result_t transact(uint8_t addr, uint32_t cmd)
         {
             uint32_t waited = tick_ms() - start;
             line_check();
-            debug_printf("i2c 0x%02x: no completion after %lu ms, SCL %d SDA %d\n", addr,
+            debug_printf("i2c 0x%02x: timeout %lu ms, SCL %d SDA %d\n", addr,
                          (unsigned long)waited, fail_scl_high, fail_sda_high);
             if (cmd != I2C_MASTER_CMD_SINGLE_RECEIVE)
             {

@@ -77,6 +77,6 @@ void buildblock_check(void)
     }
     if (platform > 17)
     {
-        debug_printf("boot: platform %u\n", platform);
+        debug_verbose("boot: platform %u\n", platform);
     }
 }

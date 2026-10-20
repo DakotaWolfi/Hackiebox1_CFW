@@ -75,7 +75,7 @@ static void sd_test(void)
 
     uint32_t t0 = tick_ms();
     bool ok = sd_start();
-    debug_printf("sd: identification %s (%lu ms), %lu sectors\n", ok ? "ok" : "FAILED",
+    debug_printf("sd: ident %s %lu ms, %lu sectors\n", ok ? "ok" : "FAILED",
                  (unsigned long)(tick_ms() - t0), (unsigned long)sd_sectors());
     if (!ok)
     {
@@ -193,7 +193,7 @@ int main(void)
     if (!board_scl_high_at_start() || !board_sda_high_at_start())
     {
         /* a low line at the start-up check is reported. */
-        debug_printf("i2c: lines at start SCL %d SDA %d, loader pins %04lx\n", board_scl_high_at_start(),
+        debug_printf("i2c: start SCL %d SDA %d, pins %04lx\n", board_scl_high_at_start(),
                      board_sda_high_at_start(), (unsigned long)board_loader_pins());
     }
 

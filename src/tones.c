@@ -151,13 +151,13 @@ static void wait_generator_idle(void)
         {
             if (ms > 1)
             {
-                debug_printf("snd: beep generator busy %u ms after its end\n", ms);
+                debug_printf("snd: beeper busy %u ms\n", ms);
             }
             return;
         }
         vTaskDelay(1);
     }
-    debug_printf("snd: beep generator still busy at the next tone (6305)\n");
+    debug_printf("snd: beeper busy at next tone (6305)\n");
 }
 
 bool tones_play(unsigned f, unsigned d, unsigned a)

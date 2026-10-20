@@ -119,7 +119,7 @@ bool accel_configure(accel_type_t t)
 void accel_restore(void)
 {
     accel_type_t t = accel_identify();
-    debug_printf("accel after recovery: %s\n", accel_name(t));
+    debug_printf("accel: recovered %s\n", accel_name(t));
     /* A part identified earlier is kept when none answers now. */
     if (t == ACCEL_NONE)
     {
@@ -127,7 +127,7 @@ void accel_restore(void)
     }
     if (t != ACCEL_NONE && !accel_configure(t))
     {
-        debug_printf("accel: config after recovery failed\n");
+        debug_printf("accel: recovery cfg FAILED\n");
     }
 }
 
@@ -194,7 +194,7 @@ static int sensor_read(bool *overflow)
         n = status & 0x3F;
         if (n > 32)
         {
-            debug_printf("accel: MMA8451Q reports %u samples (fatal)\n", n);
+            debug_printf("accel: MMA8451Q %u samples, fatal\n", n);
             n = 32;
         }
         if (n && i2c_read_regs(MMA8451Q_ADDR, 0x01 | 0x80, buf, (uint8_t)(n * 3)) != I2C_OK)

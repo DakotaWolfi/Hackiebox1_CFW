@@ -187,7 +187,7 @@ static void confirm(uint16_t results, unsigned n, bool tones, bool led)
         return;
     }
     uint16_t all = (uint16_t)((1u << n) - 1);
-    debug_printf("ext: confirm %u, %04x\n", n, results);
+    debug_verbose("ext: confirm %u, %04x\n", n, results);
     if (led)
     {
         ledui_request((results & all) == all ? LED_EXT_ON : (results & all) == 0 ? LED_EXT_OFF
@@ -232,7 +232,7 @@ static void timer_start(const uint8_t uid[8], uint32_t minutes, bool once)
     tm.path = (uint8_t)sound_path();
     tm.next_ms = tick_ms() + 1000;
     tm.last_s = -1;
-    debug_printf("ext: sleep timer %lu min%s\n", (unsigned long)minutes, once ? " (once)" : "");
+    debug_verbose("ext: sleep timer %lu min%s\n", (unsigned long)minutes, once ? " (once)" : "");
 }
 
 static void timer_end(void)
@@ -268,7 +268,7 @@ static bool timer_second(void)
     }
     if (r == 0)
     {
-        debug_printf("ext: sleep timer up\n");
+        debug_verbose("ext: sleep timer up\n");
         timer_restore();
         tm.on = false;
         return true;
@@ -762,7 +762,7 @@ bool xp_place(const uint8_t uid[8])
     bool once = false;
     if (kept.on && kept.removed && tick_ms() - kept.removed_ms <= 60000)
     {
-        debug_printf("ext: kept actions\n");
+        debug_verbose("ext: kept actions\n");
         apply_kept(uid, &fig, &once_minutes, &once);
     }
     kept.on = false;
@@ -854,7 +854,7 @@ static uint32_t le32(const uint8_t *p)
 
 void xp_locked(unsigned gesture, unsigned source)
 {
-    debug_printf("ext: gesture %u locked (source %u)\n", gesture, source);
+    debug_printf("ext: gesture %u locked, source %u\n", gesture, source);
     if (!ext_hello_received())
     {
         return;

@@ -100,7 +100,7 @@ bool sd_start(void)
         return true;
     }
     uint32_t failed_at = tick_ms();
-    debug_printf("sd: identification at start failed\n");
+    debug_printf("sd: ident FAILED\n");
     for (;;)
     {
         if (tick_ms() - failed_at >= 20000u)
@@ -220,7 +220,7 @@ bool sd_identify(void)
     command(CMD0, 0, NULL);
     if (!command(CMD8, 0x000001A5u, r) || (r[0] & 0xFFF) != 0x1A5)
     {
-        debug_printf("sd: CMD8 failed, answer 0x%08lx\n", (unsigned long)r[0]);
+        debug_printf("sd: CMD8 FAILED 0x%08lx\n", (unsigned long)r[0]);
         return false;
     }
 
@@ -231,18 +231,18 @@ bool sd_identify(void)
     {
         if (!command(CMD55, 0, NULL))
         {
-            debug_printf("sd: CMD55 failed after %u loops\n", loops);
+            debug_printf("sd: CMD55 FAILED, %u loops\n", loops);
             return false;
         }
         if (!command(ACMD41, 0x40E00000u, r))
         {
-            debug_printf("sd: ACMD41 failed after %u loops\n", loops);
+            debug_printf("sd: ACMD41 FAILED, %u loops\n", loops);
             return false;
         }
         loops++;
         if (tick_ms() - start > INIT_LIMIT_MS)
         {
-            debug_printf("sd: card not ready after %u ACMD41, OCR 0x%08lx\n", loops, (unsigned long)r[0]);
+            debug_printf("sd: not ready, %u ACMD41, 0x%08lx\n", loops, (unsigned long)r[0]);
             return false;
         }
     } while (!(r[0] & 0x80000000u));
@@ -252,13 +252,13 @@ bool sd_identify(void)
     uint8_t reg[16];
     if (!command(CMD2, 0, r))
     {
-        debug_printf("sd: CMD2 failed\n");
+        debug_printf("sd: CMD2 FAILED\n");
         return false;
     }
     r2_bytes(r, reg);
     if (!r2_valid(reg))
     {
-        debug_printf("sd: CID crc byte %02x bad\n", reg[15]);
+        debug_printf("sd: CID crc %02x bad\n", reg[15]);
         return false;
     }
     if (!command(CMD3, 0, r))
@@ -281,7 +281,7 @@ bool sd_identify(void)
     unsigned write_bl_len = ((csd[12] & 0x03) << 2) | (csd[13] >> 6);
     if (!r2_valid(csd) || structure != 1 || read_bl_len != 9 || write_bl_len != 9)
     {
-        debug_printf("sd: CSD crc %02x v%u bl %u/%u refused\n", csd[15], structure, read_bl_len, write_bl_len);
+        debug_printf("sd: CSD crc %02x v%u bl %u/%u bad\n", csd[15], structure, read_bl_len, write_bl_len);
         return false;
     }
     uint32_t c_size = ((uint32_t)(csd[7] & 0x3F) << 16) | ((uint32_t)csd[8] << 8) | csd[9];
@@ -458,7 +458,7 @@ static bool sd_access(bool write, uint32_t sector, uint8_t *buf, uint32_t count)
         {
             return true;
         }
-        debug_printf("sd: %s of %lu sectors at %lu: %s (attempt %d)\n", write ? "write" : "read",
+        debug_printf("sd: %s %lu at %lu: %s, try %d\n", write ? "write" : "read",
                      (unsigned long)count, (unsigned long)sector, xfer_text[r], attempt + 1);
         if (r == X_DATA_ERROR)
         {
@@ -505,7 +505,7 @@ void sd_erase(uint32_t first, uint32_t last)
     if (!command(CMD32, address(first), NULL) || !command(CMD33, address(last), NULL) ||
         !command(CMD38, 0, NULL))
     {
-        debug_printf("sd: erase %lu..%lu failed\n", (unsigned long)first, (unsigned long)last);
+        debug_printf("sd: erase %lu..%lu FAILED\n", (unsigned long)first, (unsigned long)last);
         return;
     }
     uint32_t t0 = tick_ms();

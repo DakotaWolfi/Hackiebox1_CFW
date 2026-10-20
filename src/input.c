@@ -259,7 +259,7 @@ static void hold_check(void)
             if (player_ears_combined())
             {
                 /* the hold switches between volume and LED level */
-                debug_printf("in: %s ear 3 s: ears switched\n", i == IN_BIG ? "big" : "small");
+                debug_printf("in: %s ear 3 s: ears swapped\n", i == IN_BIG ? "big" : "small");
                 player_ears_switch();
                 continue;
             }
@@ -325,7 +325,7 @@ static void tilt_check(void)
     }
     if (!accel_orientation(xyz))
     {
-        debug_printf("in: orientation failed (7255)\n");
+        debug_printf("in: orientation FAILED (7255)\n");
         return;
     }
     accel_dir_t t = accel_tilt(xyz);
@@ -349,7 +349,7 @@ static void tilt_check(void)
     }
     if (net_handing_over())
     {
-        debug_printf("in: tilt dropped, hand-over\n");
+        debug_verbose("in: tilt drop, hand-over\n");
         return;
     }
     unsigned source;
@@ -407,7 +407,7 @@ static void slap(uint32_t at)
     }
     if (net_handing_over())
     {
-        debug_printf("in: slap dropped, hand-over\n");
+        debug_verbose("in: slap drop, hand-over\n");
         return;
     }
     bool forward = (d == DIR_A) == (settings.slap_direction == 1);
@@ -420,7 +420,7 @@ static void slap(uint32_t at)
     }
     else if (tick_ms() - sound_headphone_ref() < 2000)
     {
-        debug_printf("in: slap dropped, headphones (6309)\n");
+        debug_printf("in: slap drop, headphones (6309)\n");
     }
     else
     {

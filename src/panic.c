@@ -137,13 +137,13 @@ static void append(const char *name, const uint8_t entry[16])
     UINT n = 0;
     if (f_open(&f, name, FA_WRITE | FA_OPEN_ALWAYS) != FR_OK)
     {
-        debug_printf("%s cannot be opened, fault entry lost\n", name);
+        debug_printf("%s not opened, fault lost\n", name);
         return;
     }
     FSIZE_t at = (f_size(&f) + 15) & ~(FSIZE_t)15;
     if (f_lseek(&f, at) != FR_OK || f_write(&f, entry, 16, &n) != FR_OK || n != 16)
     {
-        debug_printf("%s not written, fault entry lost\n", name);
+        debug_printf("%s not written, fault lost\n", name);
     }
     f_close(&f);
 }
@@ -227,7 +227,7 @@ static void __attribute__((noreturn)) do_panic(unsigned act, uint32_t ret, panic
     watchdog_feed();                                                      /* step 3 */
     port_retained_write(act | (uint32_t)id << 4 | (value & 0xFFFu) << 20, /* step 4 */
                         (value >> 12 & 0xFFFFFu) | slot_bits() << 20 | REC_VERSION);
-    debug_printf("PANIC %s activity %u id %u position %04x value 0x%08lx %.79s\n", CFW_VERSION_STRING, act,
+    debug_printf("PANIC %s act %u id %u pos %04x val 0x%08lx %.79s\n", CFW_VERSION_STRING, act,
                  (unsigned)id, pos, (unsigned long)value, msg ? msg : ""); /* step 5 */
     debug_flush();
     /* Step 6 (log drain) comes with the log upload. Step 7. */

@@ -756,7 +756,7 @@ static void commands(void)
     uint8_t c = (uint8_t)cmd;
     static const uint16_t ack[7] = {6739, 6732, 6733, 6735, 6736, 6737, 6738};
     fn_record(LOG_INFO, 37, c <= 6 ? ack[c] : 6739, 0, NULL, have_seq, seq, false);
-    debug_printf("rtnl: log-host command %ld\n", (long)cmd);
+    debug_verbose("rtnl: log-host command %ld\n", (long)cmd);
     /* with a sequence number the whole buffer goes first. */
     if (have_seq)
     {
@@ -787,7 +787,7 @@ static void commands(void)
     }
     else if (c >= 3 && c <= 5)
     {
-        debug_printf("rtnl: power cmd %u ignored\n", c);
+        debug_verbose("rtnl: power cmd %u ignored\n", c);
     }
 }
 

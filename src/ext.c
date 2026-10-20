@@ -370,7 +370,7 @@ bool ext_write(const uint8_t uid[8], ext_settings_t *s)
     unsigned n = ext_build(kind, s->stamp, s, file);
     ext_path(uid, path);
     bool ok = tbs_store(path, file, n);
-    debug_printf("ext: %s written (%u bytes)%s\n", path, n, ok ? "" : " FAILED");
+    debug_printf("ext: %s written, %u B%s\n", path, n, ok ? "" : " FAILED");
     if (ok && hello)
     {
         /* the settings report, only after the hello of this start */
@@ -422,7 +422,7 @@ static bool store_field(const uint8_t *d, unsigned len)
     bool global = !memcmp(d, zero, 8);
     if (!ext_tbs_valid(f, n) || (f[4] == EXT_GLOBAL) != global)
     {
-        debug_printf("ext: settings file in field 100 refused\n");
+        debug_printf("ext: field 100 refused\n");
         return false;
     }
     char path[30];
@@ -434,7 +434,7 @@ static bool store_field(const uint8_t *d, unsigned len)
         return false;
     }
     bool ok = tbs_store(path, f, n);
-    debug_printf("ext: %s stored (%u bytes)%s\n", path, n, ok ? "" : " FAILED");
+    debug_printf("ext: %s stored, %u B%s\n", path, n, ok ? "" : " FAILED");
     return ok;
 }
 
@@ -499,7 +499,7 @@ void ext_answer(const uint8_t *p, unsigned len)
                 if (trial_waiting)
                 {
                     answer_due = true;
-                    debug_printf("ext: hello, answer after the trial start's confirmation\n");
+                    debug_printf("ext: hello after trial confirmed\n");
                 }
                 else
                 {

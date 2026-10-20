@@ -31,6 +31,11 @@ D=$B/dcard; rm -rf $D && mkdir -p $D/CONTENT/B706EE0E
 CLOUD=dl:$TAF $B/player_test $D "0S,0P,30000R" > $B/download.log
 grep "download done\|download complete\|CHIME 7" $B/download.log
 grep -q "CHIME 7" $B/download.log || { echo "FAIL: no chime 7 after the download"; exit 1; }
+echo "== player: slow download, read ahead into the lent memory, winding meanwhile"
+rm -rf $D && mkdir -p $D/CONTENT/B706EE0E
+CLOUD=dl:$TAF DLRATE=200 $B/player_test $D "0S,0P,2000F,3000B,40000R" > $B/readahead.log
+grep "download done\|pl: jump\|pl: end at" $B/readahead.log
+grep -q "pl: end at .* und 0, rd 0 ms, ra [1-9]" $B/readahead.log || { echo "FAIL: no reading ahead during the download"; exit 1; }
 # teddyCloud extension: a fresh card with two figures; F the figure, E the event tag
 F=B706EE0E500304E0; E=11223344500304E0; X=$B/xcard
 xcard() { rm -rf $X && mkdir -p $X/CONTENT/B706EE0E $X/CONTENT/C1C2C3C4 && cp "$TAF" $X/CONTENT/B706EE0E/500304E0 && cp "$TAF" $X/CONTENT/C1C2C3C4/500304E0; }

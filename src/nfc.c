@@ -207,7 +207,7 @@ void nfc_field_on(uint8_t setting)
 {
     if (field_on)
     {
-        debug_printf("nfc: internal error, field already on\n");
+        debug_printf("nfc: field already on\n");
     }
     write_reg(REG_STATUS, 0x21);
     write_reg(REG_ISO, 0x82);
@@ -226,7 +226,7 @@ void nfc_field_off(void)
 {
     if (!field_on)
     {
-        debug_printf("nfc: internal error, field already off\n");
+        debug_printf("nfc: field already off\n");
     }
     write_reg(REG_STATUS, read_reg(REG_STATUS) & 0x1F);
     command(CMD_BLOCK_RECEIVER);
@@ -314,7 +314,7 @@ static nfc_result_t guard_hit(unsigned step)
     static bool noted;
     if (!noted)
     {
-        debug_printf("nfc: bound %u\n", step);
+        debug_verbose("nfc: bound %u\n", step);
     }
     noted = true;
     return NFC_RX_ERROR;
@@ -490,7 +490,7 @@ static nfc_result_t expect(nfc_result_t r, unsigned want, unsigned record)
 {
     if (r == NFC_OK && rx_len != want)
     {
-        debug_printf("nfc: record %u, received %u expected %u\n", record, rx_len, want);
+        debug_printf("nfc: record %u, got %u of %u\n", record, rx_len, want);
         return NFC_SHORT;
     }
     return r;

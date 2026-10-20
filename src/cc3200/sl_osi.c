@@ -89,7 +89,7 @@ static OsiReturnVal_e create(obj_t *o, unsigned n, void **p, bool mutex)
         }
     }
     taskEXIT_CRITICAL();
-    debug_printf("osi: no free %s object\n", mutex ? "lock" : "sync");
+    debug_printf("osi: no %s free\n", mutex ? "lock" : "sync");
     return OSI_MEMORY_ALLOCATION_FAILURE;
 }
 

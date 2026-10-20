@@ -81,7 +81,7 @@ void sfx_unpack(uint8_t *block)
         if (!ok)
         {
             f_unlink(path);
-            debug_printf("pl: sfx entry %u not copied\n", i);
+            debug_printf("pl: sfx %u not copied\n", i);
             break;
         }
         off += (uint32_t)total;

@@ -138,7 +138,7 @@ static bool fresh_read(void)
     {
         if (r != last_fail)
         {
-            debug_printf("tag: privacy not left, result %d%s\n", r, r == NFC_PASSWORD ? " (542)" : "");
+            debug_printf("tag: privacy stays, %d%s\n", r, r == NFC_PASSWORD ? " (542)" : "");
         }
         last_fail = (uint8_t)r;
         nfc_field_off();
@@ -152,7 +152,7 @@ static bool fresh_read(void)
     r = nfc_inventory(u);
     if (r != NFC_OK)
     {
-        debug_printf("tag: inventory failed, result %d (544)\n", r);
+        debug_printf("tag: inventory FAILED %d (544)\n", r);
         print_irqs("inventory");
         nfc_field_off();
         return false;
@@ -167,7 +167,7 @@ static bool fresh_read(void)
         r = nfc_read_block(u, b, data + 4 * b);
         if (r != NFC_OK)
         {
-            debug_printf("tag: block %u failed, result %d (550)\n", b, r);
+            debug_printf("tag: block %u FAILED %d (550)\n", b, r);
             print_irqs("block read");
             blocks_ok = false;
         }
@@ -185,7 +185,7 @@ static bool fresh_read(void)
     // }
     // if (r != NFC_OK)
     // {
-    //     debug_printf("tag: re-lock failed, result %d (548)\n", r);
+    //     debug_printf("tag: re-lock failed %d (548)\n", r);
     //     print_irqs("re-lock");
     // }
     nfc_field_off();
@@ -298,14 +298,14 @@ static void tag_task(void *arg)
     (void)arg;
     uint32_t delay = 200;
     bool fast = false;
-    debug_printf("tag: polling started\n");
+    debug_verbose("tag: polling\n");
     /* First reader access 200 ms after the polling starts. */
     tick_wait(200);
     nfc_lock();
     nfc_reinit();
     bool st = nfc_selftest();
     bootstate_report(BOOT_CHECK_READER, st);
-    debug_printf("tag: reader SPI test %s\n", st ? "ok" : "FAILED");
+    debug_printf("tag: reader SPI %s\n", st ? "ok" : "FAILED");
     nfc_unlock();
     int last_presence = -1;
 
@@ -406,12 +406,12 @@ static void tag_task(void *arg)
             fast = delay == 20;
             if (fast)
             {
-                debug_printf("tag: fast, RSSI %u/%u, %u tries (7523)\n", rssi_max_main,
-                             rssi_max_aux, attempts);
+                debug_verbose("tag: fast, RSSI %u/%u, %u tries (7523)\n", rssi_max_main,
+                              rssi_max_aux, attempts);
             }
             else
             {
-                debug_printf("tag: fast ended (7524)\n");
+                debug_verbose("tag: fast ended (7524)\n");
             }
         }
     }

@@ -119,17 +119,17 @@ static void stalls(uint32_t now)
     {
         if (newly & 1u << a)
         {
-            debug_printf("mon: act %u stalled, mark %lu ms ago\n", a,
+            debug_printf("mon: act %u stalled %lu ms\n", a,
                          (unsigned long)(now - mark[a]));
         }
         if (ended & 1u << a)
         {
-            debug_printf("mon: act %u ok again\n", a);
+            debug_verbose("mon: act %u ok again\n", a);
         }
     }
     if (newly)
     {
-        debug_printf("mon: stalled %03lx, panic after 600 s\n", (unsigned long)s);
+        debug_printf("mon: stalled %03lx\n", (unsigned long)s);
     }
     if (s && !prev_stalled && !stall_first)
     {
@@ -137,7 +137,7 @@ static void stalls(uint32_t now)
     }
     if (!s && prev_stalled)
     {
-        debug_printf("mon: stalls over after %lu ms\n", (unsigned long)(now - stall_first));
+        debug_printf("mon: stalls over, %lu ms\n", (unsigned long)(now - stall_first));
         stall_first = 0;
     }
     prev_stalled = s;

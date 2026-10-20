@@ -475,7 +475,7 @@ static bool page_stop(void)
     }
     if (page_active)
     {
-        debug_printf("net: page server busy\n");
+        debug_printf("net: page busy\n");
     }
     bool t = page_took;
     page_took = false;
@@ -487,7 +487,7 @@ static bool page_stop(void)
 /* Fatal network processor error. */
 static void __attribute__((noreturn)) fatal(const char *what, long r)
 {
-    debug_printf("net: %s %ld FATAL (faults %lu, last %lu/0x%lx)\n", what, r, (unsigned long)faults,
+    debug_printf("net: %s %ld FATAL, %lu, last %lu/0x%lx\n", what, r, (unsigned long)faults,
                  (unsigned long)fault_ev, (unsigned long)fault_info);
     panic(PANIC_NWP, (uint32_t)r, what);
 }
@@ -559,7 +559,7 @@ static void after_start(long r_role, bool first)
         {
             if (i == 500)
             {
-                debug_printf("net: AP address wait\n");
+                debug_verbose("net: AP address wait\n");
             }
             vTaskDelay(pdMS_TO_TICKS(10));
         }
@@ -616,7 +616,7 @@ static void shutdown(uint8_t reason, const char *why)
     {
         if (i == 100 || i == 5400)
         {
-            debug_printf("net: hand-over wait, log %d drv %d\n", log_connected(), osi_driver_busy());
+            debug_verbose("net: hand-over log %d drv %d\n", log_connected(), osi_driver_busy());
         }
         if (i >= 5400)
         {
@@ -655,7 +655,7 @@ static void shutdown(uint8_t reason, const char *why)
     log_arg_num(&a, reason);
     log_arg_num(&a, (int32_t)took);
     log_fn(took >= 1000 ? LOG_WARN : LOG_INFO, 24, 8372, took >= 1000 ? 1 : 0, &a);
-    debug_printf("net: shutdown done, %lu ms\n", (unsigned long)took);
+    debug_verbose("net: shutdown done, %lu ms\n", (unsigned long)took);
 }
 
 /* Network restart. */
@@ -673,7 +673,7 @@ static void restart_if_running(uint8_t reason, const char *why)
 {
     if (going_down || !nwp_on || (role != ROLE_STA && role != ROLE_AP))
     {
-        debug_printf("net: no restart (%s), role %ld\n", why, role);
+        debug_printf("net: no restart %s, role %ld\n", why, role);
         return;
     }
     restart(reason, why);
@@ -697,7 +697,7 @@ static bool stop_services(void)
         debug_verbose("net: stop svc %lu: %ld\n", (unsigned long)id[i], r);
         if (r < 0)
         {
-            debug_printf("net: stop svc %lu %ld -> restart\n", (unsigned long)id[i], r);
+            debug_printf("net: svc %lu %ld -> restart\n", (unsigned long)id[i], r);
             return false;
         }
     }
@@ -720,7 +720,7 @@ static bool set_policy(bool on)
     {
         return false;
     }
-    debug_printf("net: policy 0x%02x -> %s\n", pol, on ? "auto" : "off");
+    debug_verbose("net: policy 0x%02x -> %s\n", pol, on ? "auto" : "off");
     r = sl_WlanPolicySet(SL_POLICY_CONNECTION, on ? SL_CONNECTION_POLICY(1, 0, 0, 0, 0) : SL_CONNECTION_POLICY(0, 0, 0, 0, 0),
                          NULL, 0);
     if (r < 0)
@@ -840,8 +840,8 @@ static void startup(void)
         fatal("MAC get", r);
     }
     /* The summary of the network start-up, once per start. */
-    debug_printf("net: up, NWP %lu.%lu.%lu.%lu, MAC %02x:%02x:%02x:%02x:%02x:%02x, %u profiles, policy 0x%02x%s, "
-                 "%lu restarts\n",
+    debug_printf("net: up, NWP %lu.%lu.%lu.%lu, MAC %02x:%02x:%02x:%02x:%02x:%02x, %u prof, pol 0x%02x%s, "
+                 "%lu rst\n",
                  (unsigned long)(sp_version >> 24), (unsigned long)(sp_version >> 16 & 255),
                  (unsigned long)(sp_version >> 8 & 255), (unsigned long)(sp_version & 255), mac[0], mac[1], mac[2],
                  mac[3], mac[4], mac[5], profiles, policy, offline ? " offline" : "", (unsigned long)shutdowns);
@@ -871,7 +871,7 @@ static void offline_on(void)
     bool changed = set_policy(false);
     ledui_request(LED_CONFIRMATION);
     offline = true;
-    debug_printf("net: offline on\n");
+    debug_verbose("net: offline on\n");
     if (changed)
     {
         restart(R_OFFLINE, "offline on");
@@ -894,7 +894,7 @@ static void offline_off(void)
     bool changed = set_policy(true);
     ledui_request(LED_CONFIRMATION);
     offline = false;
-    debug_printf("net: offline off\n");
+    debug_verbose("net: offline off\n");
     if (changed)
     {
         restart(R_OFFLINE, "offline off");
@@ -996,7 +996,7 @@ static void open_ap(void)
     page_allowed = true;
     mode = M_SETUP;
     ledui_request(LED_SETUP);
-    debug_printf("net: setup mode, %u networks\n", scan_n);
+    debug_printf("net: setup, %u networks\n", scan_n);
 }
 
 static void setup_search(void)
@@ -1024,7 +1024,7 @@ static void setup_search(void)
             xTaskDelayUntil(&t, pdMS_TO_TICKS(20));
             if (offline_req)
             {
-                debug_printf("net: search ended (offline)\n");
+                debug_printf("net: search end, offline\n");
                 scan_policy(false);
                 mode = M_STATION;
                 offline_on();
@@ -1074,7 +1074,7 @@ static void setup_gesture(void)
 {
     if (going_down)
     {
-        debug_printf("net: setup gesture ignored\n");
+        debug_printf("net: setup gesture off\n");
         return;
     }
     if (offline)
@@ -1169,7 +1169,7 @@ static void join(uint8_t language)
         cloud_sync_request(false);
         return;
     }
-    debug_printf("net: join failed (%s)\n", conn ? "no address" : "not associated");
+    debug_printf("net: join FAILED %s\n", conn ? "no address" : "not associated");
     stop_services_or_restart();
     if (set_policy(true))
     {
@@ -1247,7 +1247,7 @@ static void store_profile(void)
         log_arg_num(&a, p.del_after);
         log_fn(LOG_INFO, 24, 7178, 0, &a);
     }
-    debug_printf("net: profile stored, slot %ld, deleted %d\n", slot, p.del_after);
+    debug_printf("net: profile slot %ld, del %d\n", slot, p.del_after);
 }
 
 static void cloud_result(uint32_t s, int error)
@@ -1259,7 +1259,7 @@ static void cloud_result(uint32_t s, int error)
     profile_pending = false;
     if (state <= 3)
     {
-        debug_printf("net: profile dropped (state %u)\n", state);
+        debug_printf("net: profile drop, state %u\n", state);
         return;
     }
     switch (error)
@@ -1286,7 +1286,7 @@ static void cloud_result(uint32_t s, int error)
         }
         break;
     default:
-        debug_printf("net: profile dropped (%d)\n", error);
+        debug_printf("net: profile drop %d\n", error);
         break;
     }
 }
@@ -1299,7 +1299,7 @@ static void handle(const event_t *e)
     {
     case EV_DISCONNECT:
         end_session();
-        debug_printf("net: disconnected, reason %u\n", e->len);
+        debug_printf("net: disconnect %u\n", e->len);
         if (role != ROLE_STA)
         {
             break;
@@ -1351,10 +1351,10 @@ static void handle(const event_t *e)
         break;
     }
     case EV_ERROR:
-        debug_printf("net: general error 0x%04lx\n", (unsigned long)e->info);
+        debug_printf("net: error 0x%04lx\n", (unsigned long)e->info);
         break;
     case EV_FAULT:
-        debug_printf("net: driver fault %lu, 0x%lx%s\n", (unsigned long)e->ip, (unsigned long)e->info,
+        debug_printf("net: drv fault %lu, 0x%lx%s\n", (unsigned long)e->ip, (unsigned long)e->info,
                      e->running ? "" : " (stopped)");
         if (!e->running)
         {
@@ -1381,7 +1381,7 @@ static void handle(const event_t *e)
         }
         else
         {
-            debug_printf("net: submit ignored, mode %u\n", mode);
+            debug_printf("net: submit off, mode %u\n", mode);
         }
         break;
     case EV_CLOUD_RESULT:
