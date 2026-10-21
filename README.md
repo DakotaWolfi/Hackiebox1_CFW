@@ -205,7 +205,7 @@ changes, so `make clean` after changing one):
 | `CFW_DEBUG` | 1 | 2 adds the verbose bring-up diagnostics (`debug_verbose`) on UART0 |
 | `CFW_VERBOSE` | (none) | modules with `debug_verbose` output at level 1, e.g. `CFW_VERBOSE="net cloud"` (all at once do not fit the SRAM) |
 | `CFW_LOG_UART` | 0 | 1 copies the binary log frames to UART0 |
-| `CFW_HIBERNATE` | 0 | 1 uses hibernation for the off state and the hibernate restart; 0 an MCU reset and a low-power wait (not yet tried on a device) |
+| `CFW_HIBERNATE` | 1 | 1 uses hibernation for the off state and the hibernate restart; 0 an MCU reset and a wait with the processor running (drains the battery) |
 | `CFW_OPUS_SMALL` | 1 | `cwrs.c` without its pulse-count tables, about 5 KB less SRAM |
 
 `make stackcheck` prints the worst-case stack per activity from the

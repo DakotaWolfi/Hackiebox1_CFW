@@ -12,7 +12,9 @@
 #include "inc/hw_types.h"
 #include "driverlib/rom.h"
 #include "driverlib/rom_map.h"
+#include "driverlib/hwspinlock.h"
 #include "driverlib/prcm.h"
+#include "driverlib/spi.h"
 #include "driverlib/utils.h"
 #include "board.h"
 #include "debug.h"
@@ -48,6 +50,40 @@ static unsigned wake_inputs(void)
 }
 #endif
 
+#if CFW_HIBERNATE
+/* The serial flash, shared with the network processor, into deep power-down
+ * (CC3200 SDK utils_if.c); it stays powered when its lock is not free. */
+static void flash_deep_power_down(void)
+{
+    unsigned long status;
+    if (MAP_HwSpinLockTryAcquire(HWSPINLOCK_SSPI, 4000000u) != 0)
+    {
+        return;
+    }
+    MAP_PRCMPeripheralClkEnable(PRCM_SSPI, PRCM_RUN_MODE_CLK);
+    MAP_PRCMPeripheralReset(PRCM_SSPI);
+    while (!MAP_PRCMPeripheralStatusGet(PRCM_SSPI))
+        ;
+    MAP_SPIReset(SSPI_BASE);
+    MAP_SPIConfigSetExpClk(SSPI_BASE, MAP_PRCMPeripheralClockGet(PRCM_SSPI), 20000000u, SPI_MODE_MASTER, SPI_SUB_MODE_0,
+                           SPI_SW_CTRL_CS | SPI_4PIN_MODE | SPI_TURBO_OFF | SPI_CS_ACTIVELOW | SPI_WL_8);
+    MAP_SPIEnable(SSPI_BASE);
+    MAP_SPICSEnable(SSPI_BASE);
+    do
+    {
+        MAP_SPIDataPut(SSPI_BASE, 0x05); /* read status */
+        MAP_SPIDataGet(SSPI_BASE, &status);
+        MAP_SPIDataPut(SSPI_BASE, 0xFF);
+        MAP_SPIDataGet(SSPI_BASE, &status);
+    } while ((status & 0xFF) == 0x01); /* busy */
+    MAP_SPICSDisable(SSPI_BASE);
+    MAP_SPICSEnable(SSPI_BASE);
+    MAP_SPIDataPut(SSPI_BASE, 0xB9); /* deep power-down */
+    MAP_SPICSDisable(SSPI_BASE);
+    MAP_HwSpinLockRelease(HWSPINLOCK_SSPI);
+}
+#endif
+
 /* Off state (power-off wake-up sources, no box state stored). Without
  * CFW_HIBERNATE it is a polled wait with interrupts masked, so that no
  * activity runs any more, until an ear is pressed or the box is docked
@@ -65,6 +101,7 @@ void off_state_enter(void)
     MAP_PRCMHibernateWakeUpGPIOSelect(PRCM_HIB_GPIO17, PRCM_HIB_RISE_EDGE);
     MAP_PRCMHibernateWakeupSourceEnable(PRCM_HIB_GPIO2 | PRCM_HIB_GPIO4 | PRCM_HIB_GPIO17);
     UtilsDelay(80000u); /* 3 ms */
+    flash_deep_power_down();
     MAP_PRCMHibernateEnter();
 #else
     fault_led(0);
@@ -92,12 +129,14 @@ void restart_hibernate(void)
     debug_write("hibernate restart\n", 64);
     debug_flush();
 #if CFW_HIBERNATE
-    /* Network processor off (CC3200 SDK cc_pal.c). */
+    /* Network processor off (CC3200 SDK, HIBEntrePreamble). */
     HWREG(0x400F70B8) = 1; /* interrupt to the network processor */
     UtilsDelay(160000u);   /* 6 ms */
     HWREG(0x400F70B0) = 1; /* cleared */
     UtilsDelay(160000u);
     HWREG(0x4402E16C) |= 2; /* shut-down request */
+    UtilsDelay(800u);
+    HWREG(0x4402F024) &= 0xF7FFFFFFu; /* power-management mode request cleared */
     MAP_PRCMHibernateWakeUpGPIOSelect(PRCM_HIB_GPIO17, PRCM_HIB_RISE_EDGE);
     MAP_PRCMHibernateIntervalSet(330);
     MAP_PRCMHibernateWakeupSourceEnable(PRCM_HIB_SLOW_CLK_CTR | PRCM_HIB_GPIO17);

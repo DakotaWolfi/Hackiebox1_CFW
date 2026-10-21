@@ -15,7 +15,7 @@
  * Not yet: the deferral while a sync runs, the announcement
  * queue's activity rule, the slow-clock check,
  * receive statistics and network processor clock (power-off steps 2, 4),
- * stack records and the serial flash deep power-down.
+ * stack records.
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  */

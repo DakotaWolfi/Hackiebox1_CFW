@@ -1,7 +1,7 @@
 /*
  * Panic, fault records and the retained record.
  *
- * Without CFW_HIBERNATE (the default) the hibernate restart and the off
+ * Without CFW_HIBERNATE (the host tests) the hibernate restart and the off
  * state are replaced by an MCU reset, and a panic, hard fault or watchdog
  * record found after a core, MCU or watchdog reset is reported as after a
  * hibernation exit, so that the fault report still works.

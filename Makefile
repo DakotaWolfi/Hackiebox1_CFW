@@ -10,7 +10,7 @@ CROSS       := $(ARM_GCC_DIR)/arm-none-eabi-
 
 CFW_VERSION ?= 0.1.0
 # 1: hibernate restart and off state by hibernation; 0: MCU reset.
-CFW_HIBERNATE ?= 0
+CFW_HIBERNATE ?= 1
 # Serial output: 1 normal operation, 2 adds the verbose diagnostics.
 CFW_DEBUG ?= 1
 # Volume step after a cold start on both paths (8); the
