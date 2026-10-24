@@ -360,6 +360,16 @@ void log_event(log_event_t t, const uint8_t *u)
 void sound_chime(chime_t c) { printf("[%6u] CHIME %d\n", sim_ms, c); }
 uint8_t net_state(void) { return 6; }
 void power_off_soon(void) { printf("[%6u] STUB power-off requested\n", sim_ms); }
+void power_idle_minutes(uint16_t battery, uint16_t station)
+{
+    static uint16_t last[2];
+    if (battery != last[0] || station != last[1])
+    {
+        printf("[%6u] STUB idle power-off minutes %u/%u\n", sim_ms, battery, station);
+        last[0] = battery;
+        last[1] = station;
+    }
+}
 static bool critical;
 bool power_critical_pending(void) { return critical; }
 bool power_shutting_down(void) { return false; }

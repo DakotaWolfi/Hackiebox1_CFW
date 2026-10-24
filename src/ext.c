@@ -9,6 +9,7 @@
 #include <stdio.h>
 #include <string.h>
 #include "ff.h"
+#include "port.h"
 #include "clock.h"
 #include "crc32.h"
 #include "debug.h"
@@ -105,13 +106,13 @@ void ext_path(const uint8_t uid[8], char *path)
 }
 
 /* length, highest value and the kinds (bit kind)
- * of the keys 0x01 to 0x0A. */
+ * of the keys 0x01 to 0x0C. */
 static const struct
 {
     uint8_t len;
     uint8_t kinds;
     uint16_t max;
-} keys[11] = {
+} keys[13] = {
     [EXT_RESUME] = {1, 1u << EXT_PROFILE, 1},
     [EXT_SHUFFLE] = {1, 1u << EXT_PROFILE, 1},
     [EXT_SLEEP] = {2, 1u << EXT_PROFILE, 65535},
@@ -122,6 +123,8 @@ static const struct
     [EXT_SLAP_LOCK] = {1, 1u << EXT_PROFILE | 1u << EXT_GLOBAL, 1},
     [EXT_TILT_LOCK] = {1, 1u << EXT_PROFILE | 1u << EXT_GLOBAL, 1},
     [EXT_VOLUME_LOCK] = {1, 1u << EXT_PROFILE | 1u << EXT_GLOBAL, 1},
+    [EXT_IDLE_BATTERY] = {2, 1u << EXT_GLOBAL, 65535},
+    [EXT_IDLE_STATION] = {2, 1u << EXT_GLOBAL, 65535},
 };
 
 bool ext_tbs_valid(const uint8_t *f, unsigned n)
@@ -158,12 +161,12 @@ void ext_parse_settings(const uint8_t *f, ext_settings_t *s)
         unsigned k = r[0];
         /* unknown, not allowed in this kind, other length, out of range:
          * skipped; the last valid one counts */
-        if (k < 1 || k > 10 || !(keys[k].kinds & (1u << s->kind)) || r[1] != keys[k].len)
+        if (k < 1 || k > 12 || !(keys[k].kinds & (1u << s->kind)) || r[1] != keys[k].len)
         {
             continue;
         }
         uint16_t v = r[1] == 2 ? (uint16_t)(r[2] | r[3] << 8) : r[2];
-        if (v > keys[k].max)
+        if (v > keys[k].max || (v == 0 && k >= EXT_IDLE_BATTERY))
         {
             continue;
         }
@@ -183,9 +186,10 @@ void ext_parse_event(const uint8_t *f, ext_event_t *e)
         if (r[0] == 0x10 && r[1] == 3 && e->n < 16)
         {
             uint16_t par = (uint16_t)(r[3] | r[4] << 8);
+            bool whole = r[2] == 17 || r[2] == 18; /* minutes, no mode */
             e->a[e->n].action = r[2];
-            e->a[e->n].mode = (uint8_t)(par >> 14);
-            e->a[e->n].value = par & 0x3FFF;
+            e->a[e->n].mode = whole ? 0 : (uint8_t)(par >> 14);
+            e->a[e->n].value = whole ? par : par & 0x3FFF;
             e->n++;
         }
         else if (r[0] == 0x11 && r[1] == 1 && r[2] <= 1)
@@ -200,7 +204,7 @@ ext_scope_t ext_event_scope(const ext_event_t *e)
     for (unsigned i = 0; i < e->n; i++)
     {
         uint8_t a = e->a[i].action;
-        if (a == 8 || a == 9 || (a >= 13 && a <= 16))
+        if (a == 8 || a == 9 || (a >= 13 && a <= 18))
         {
             return EXT_SCOPE_GLOBAL;
         }
@@ -286,7 +290,7 @@ bool ext_global(ext_settings_t *out)
 unsigned ext_build(uint8_t kind, uint32_t stamp, const ext_settings_t *s, uint8_t *out)
 {
     unsigned n = 12;
-    for (unsigned k = 1; k <= 10; k++)
+    for (unsigned k = 1; k <= 12; k++)
     {
         if (!(s->present & (1u << k)) || !(keys[k].kinds & (1u << kind)))
         {
@@ -310,9 +314,9 @@ unsigned ext_build(uint8_t kind, uint32_t stamp, const ext_settings_t *s, uint8_
     return n + 4;
 }
 
-void ext_pack_report(const ext_settings_t *s, uint32_t *packed, uint32_t *values)
+void ext_pack_report(const ext_settings_t *s, uint32_t *packed, uint32_t *values, uint32_t *idle)
 {
-    uint32_t p = s->kind & 3u, v = 0;
+    uint32_t p = s->kind & 3u, v = 0, i = 0;
     for (unsigned k = 1; k <= 7; k++)
     {
         if (s->present & (1u << k))
@@ -355,8 +359,19 @@ void ext_pack_report(const ext_settings_t *s, uint32_t *packed, uint32_t *values
             v |= 1u << (24 + i) | (uint32_t)(s->value[EXT_SLAP_LOCK + i] & 1) << (27 + i);
         }
     }
+    if (ext_has(s, EXT_IDLE_BATTERY))
+    {
+        p |= 1u << 17;
+        i |= s->value[EXT_IDLE_BATTERY];
+    }
+    if (ext_has(s, EXT_IDLE_STATION))
+    {
+        p |= 1u << 18;
+        i |= (uint32_t)s->value[EXT_IDLE_STATION] << 16;
+    }
     *packed = p;
     *values = v;
+    *idle = i;
 }
 
 bool ext_write(const uint8_t uid[8], ext_settings_t *s)
@@ -374,14 +389,15 @@ bool ext_write(const uint8_t uid[8], ext_settings_t *s)
     if (ok && hello)
     {
         /* the settings report, only after the hello of this start */
-        uint32_t packed, values;
-        ext_pack_report(s, &packed, &values);
+        uint32_t packed, values, idle;
+        ext_pack_report(s, &packed, &values, &idle);
         log_args_t a = {0};
         log_arg_num(&a, kind == EXT_PROFILE ? (int32_t)ext_le32(uid) : 0);
         log_arg_num(&a, kind == EXT_PROFILE ? (int32_t)ext_le32(uid + 4) : 0);
         log_arg_num(&a, (int32_t)packed);
         log_arg_num(&a, (int32_t)values);
         log_arg_num(&a, (int32_t)s->stamp);
+        log_arg_num(&a, (int32_t)idle);
         log_fn(LOG_INFO, 22, 32258, 0, &a);
     }
     return ok;
@@ -456,6 +472,27 @@ static void hello_answer(void)
     debug_printf("ext: hello, capabilities 0x%04lx\n", (unsigned long)EXT_CAPS);
 }
 
+void ext_hello(void)
+{
+    CRITICAL_ENTER();
+    bool first = !hello;
+    hello = true;
+    CRITICAL_EXIT();
+    if (!first)
+    {
+        return;
+    }
+    if (trial_waiting)
+    {
+        answer_due = true;
+        debug_printf("ext: hello after trial confirmed\n");
+    }
+    else
+    {
+        hello_answer();
+    }
+}
+
 void ext_answer(const uint8_t *p, unsigned len)
 {
     const uint8_t *end = p + len;
@@ -493,18 +530,9 @@ void ext_answer(const uint8_t *p, unsigned len)
             {
                 return;
             }
-            if (field == 101 && !hello)
+            if (field == 101)
             {
-                hello = true;
-                if (trial_waiting)
-                {
-                    answer_due = true;
-                    debug_printf("ext: hello after trial confirmed\n");
-                }
-                else
-                {
-                    hello_answer();
-                }
+                ext_hello();
             }
             break;
         case 1:

@@ -1016,12 +1016,13 @@ void cloud_log_closed(void)
 
 /* the first answered exchange of the start confirms a trial
  * start (the time request; on the ESP32 box the freshness check). */
+static bool start_confirmed;
+
 static void server_answered(void)
 {
-    static bool reported;
-    if (!reported)
+    if (!start_confirmed)
     {
-        reported = true;
+        start_confirmed = true;
         bootstate_report(BOOT_CHECK_TIME, true);
     }
 }
@@ -2490,10 +2491,25 @@ static void log_post(void)
 
 static cloud_error_t sync_run(uint32_t s, bool user);
 
+/* A session that did not complete is made again until one completes in
+ * the start: its answer brings the hello. After 60 s, each further one
+ * waits twice as long, up to 960 s. */
+static bool session_completed, retry_due;
+static uint8_t retries;
+static uint32_t retry_at;
+
+#ifdef CFW_ESP32
+/* the freshness check is the first exchange there: state 6 comes only from it */
+#define RETRY_STATE 4
+#else
+#define RETRY_STATE 6
+#endif
+
 static void maybe_sync(void)
 {
     uint32_t s = net_session();
-    if (!sync_pending || player_busy() || cloud_dl.active || uxQueueMessagesWaiting(queue))
+    bool retry = retry_due && (int32_t)(tick_ms() - retry_at) >= 0;
+    if ((!sync_pending && !retry) || player_busy() || cloud_dl.active || uxQueueMessagesWaiting(queue))
     {
         return;
     }
@@ -2505,10 +2521,11 @@ static void maybe_sync(void)
         player_sync_result(CE_NAME, true);
         return;
     }
-    /* An automatic sync waits for state 6, a requested one starts from 4;
-     * never without a network session (state 4
-     * to 6 can stand for a moment with session 0). */
-    if (!cfg.valid || !s || net_state() < (sync_user ? 4 : 6))
+    /* An automatic sync waits for state 6, a requested one starts from 4,
+     * a repeated one from RETRY_STATE; never without a network session
+     * (state 4 to 6 can stand for a moment with session 0). */
+    unsigned state = sync_user ? 4 : (sync_pending ? 6 : RETRY_STATE);
+    if (!cfg.valid || !s || net_state() < state)
     {
         return;
     }
@@ -2516,7 +2533,15 @@ static void maybe_sync(void)
     bool user = sync_user;
     sync_pending = sync_user = false;
     CRITICAL_EXIT();
+    retry_due = false;
+#ifdef CFW_ESP32
+    if (!sync_run(s, user))
+    {
+        server_answered();
+    }
+#else
     sync_run(s, user);
+#endif
 }
 
 /* The freshness check session with its indication and result. */
@@ -2531,6 +2556,13 @@ static cloud_error_t sync_run(uint32_t s, bool user)
     sync_running = false;
     monitor_sync_activity(false);
     debug_printf("cloud: freshness session %s\n", e ? cloud_error_name(e) : "complete");
+    session_completed |= !e;
+    if (e && !session_completed)
+    {
+        retry_at = tick_ms() + (60000u << retries);
+        retries += retries < 4;
+        retry_due = true;
+    }
     if (e == CE_NAME)
     {
         net_cloud_state(s, 4);

@@ -31,6 +31,7 @@ void cloud_sync_request(bool u) { (void)u; }
 void cloud_log_closed(void) {}
 bool cloud_log_yield_wanted(void) { return false; }
 bool ext_hello_received(void) { return false; }
+void ext_hello(void) {}
 uint8_t remote_command(uint8_t c, const uint8_t *arg, unsigned n)
 {
     (void)c;

@@ -6,11 +6,11 @@
 #        tbs.py <card> show <uid hex | global>
 #        tbs.py <card> state <uid hex> audio_id position seed index chapters flags
 #        tbs.py <card> showstate
-# keys: resume shuffle sleep spk hp led ears slap tilt vol
+# keys: resume shuffle sleep spk hp led ears slap tilt vol idlebat idlest
 # SPDX-License-Identifier: GPL-3.0-or-later
 import os, struct, sys
 
-KEYS = {'resume': 1, 'shuffle': 2, 'sleep': 3, 'spk': 4, 'hp': 5, 'led': 6, 'ears': 7, 'slap': 8, 'tilt': 9, 'vol': 10}
+KEYS = {'resume': 1, 'shuffle': 2, 'sleep': 3, 'spk': 4, 'hp': 5, 'led': 6, 'ears': 7, 'slap': 8, 'tilt': 9, 'vol': 10, 'idlebat': 11, 'idlest': 12}
 NAMES = {v: k for k, v in KEYS.items()}
 
 
@@ -42,7 +42,7 @@ def records(args):
     for a in args:
         k, v = a.split('=')
         v = int(v, 0)
-        body += bytes([KEYS[k], 2]) + struct.pack('<H', v) if KEYS[k] == 3 else bytes([KEYS[k], 1, v])
+        body += bytes([KEYS[k], 2]) + struct.pack('<H', v) if KEYS[k] in (3, 11, 12) else bytes([KEYS[k], 1, v])
     return body
 
 

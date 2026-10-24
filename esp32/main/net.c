@@ -63,6 +63,7 @@ typedef enum
     EV_SUBMIT,
     EV_SHUTDOWN,
     EV_SETUP,
+    EV_RESCAN,
     EV_CLOUD_RESULT,
 } ev_t;
 
@@ -832,6 +833,17 @@ static void leave_setup(void)
     ledui_request(LED_CONFIRMATION);
 }
 
+/* A new search from setup mode, asked for by the setup page: the scan needs
+ * the station mode; the setup search opens the access point again. */
+static void rescan(void)
+{
+    debug_printf("net: setup rescan\n");
+    dns_close();
+    net_down("rescan");
+    wifi_up(WIFI_MODE_STA);
+    setup_search();
+}
+
 static void setup_gesture(void)
 {
     if (going_down)
@@ -1008,6 +1020,12 @@ static void handle(const event_t *e)
     case EV_SETUP:
         setup_gesture();
         break;
+    case EV_RESCAN:
+        if (mode == M_SETUP && !going_down)
+        {
+            rescan();
+        }
+        break;
     case EV_SUBMIT:
         if (mode == M_SETUP && !player_busy() && !going_down)
         {
@@ -1071,6 +1089,11 @@ static void task(void *arg)
 void net_setup_request(void)
 {
     post_request(EV_SETUP, 0, 0);
+}
+
+void net_setup_rescan(void)
+{
+    post_request(EV_RESCAN, 0, 0);
 }
 
 bool net_sync_gesture(void)

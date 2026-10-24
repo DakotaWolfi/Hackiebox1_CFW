@@ -5,7 +5,7 @@ The custom firmware (CFW, CC3200 and ESP32 box) makes the same requests as the o
 | What | Way | Content |
 | --- | --- | --- |
 | Detection | header `X-CFW-Build: <build>` on every request | the CFW's build number (seconds since 1970, unsigned 32-bit). User-Agent and `cv` stay those of the box's original firmware, so the vendor's cloud sees an original box. Without the header the request comes from the original firmware, which must never get a CFW image. |
-| Hello | field 101 (varint) in the freshness-check answer | "this server supports the CFW"; the original firmware skips the unknown field |
+| Hello | field 101 (varint) in the freshness-check answer, or log-host command 63 | "this server supports the CFW"; the original firmware skips the unknown field |
 | Hello answer | log record group 22, function 0x7E01 | build, capability bits (which features the box has), result of the last update, rolled-back build |
 | Settings files | field 100 in the freshness-check answer | 8 UID bytes + one small file (`TBS1`, up to 256 bytes): profile of a tag, event tag, or box settings (UID 0). The whole answer stays within 1024 bytes. |
 | Changes on the box | log record 0x7E02 | the box changed a profile or the box settings itself (by an event tag) |

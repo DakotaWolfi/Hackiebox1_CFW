@@ -974,7 +974,7 @@ static void ext_tests(const uint8_t *taf, long tz)
         uint8_t buf[4096];
         unsigned n;
         CHECK(ext_write(fig2, &s) && card_file("CFW/EXT/01020304/500304E0.TBS", buf, &n) && n == 19 && buf[4] == 1 && buf[5] == 0 && buf[12] == 1 && buf[13] == 1 && buf[14] == 1 && ext_tbs_valid(buf, n) && ext_le32(buf + 8) == clock_now(), "19 bytes, kind 1, origin 0, body 01 01 01, clock time stamp");
-        CHECK(n_fn == 1 && fn_func[0] == 32258 && fn_args[0].n == 20 && !memcmp(fn_args[0].data, fig2, 8) && ext_le32(fn_args[0].data + 8) == (1u | 1u << 4 | 1u << 12) && ext_le32(fn_args[0].data + 16) == ext_le32(buf + 8), "report: UID bytes, kind 1, presence bit 4, resume bit 12, time stamp");
+        CHECK(n_fn == 1 && fn_func[0] == 32258 && fn_args[0].n == 24 && !memcmp(fn_args[0].data, fig2, 8) && ext_le32(fn_args[0].data + 8) == (1u | 1u << 4 | 1u << 12) && ext_le32(fn_args[0].data + 16) == ext_le32(buf + 8), "report: UID bytes, kind 1, presence bit 4, resume bit 12, time stamp");
         ext_settings_t s2 = {0};
         ext_set(&s2, EXT_SHUFFLE, 1);
         ext_set(&s2, EXT_SLEEP, 300);
@@ -986,14 +986,33 @@ static void ext_tests(const uint8_t *taf, long tz)
         card_file("CFW/EXT/01020304/500304E0.TBS", buf, &n);
         static const uint8_t body[] = {0x02, 1, 1, 0x03, 2, 0x2C, 0x01, 0x05, 1, 9, 0x08, 1, 0, 0x09, 1, 1};
         CHECK(n == 16 + sizeof body && !memcmp(buf + 12, body, sizeof body), "ascending keys, 2-byte sleep, 0x07 left out of a profile");
-        uint32_t pk, vl;
-        ext_pack_report(&s2, &pk, &vl);
+        uint32_t pk, vl, il;
+        ext_pack_report(&s2, &pk, &vl, &il);
         CHECK(pk == (1u | 1u << 5 | 1u << 6 | 1u << 8 | 1u << 10 | 1u << 13 | 1u << 16) && vl == (300u | 9u << 20 | 1u << 24 | 1u << 25 | 1u << 28), "packed %#x values %#x", pk, vl);
         ext_settings_t g = {0};
         ext_set(&g, EXT_LED, 1);
         n_fn = 0;
         ext_write(NULL, &g);
         CHECK(n_fn == 1 && ext_le32(fn_args[0].data) == 0 && ext_le32(fn_args[0].data + 4) == 0 && (ext_le32(fn_args[0].data + 8) & 3) == 3, "global: UID 0, kind 3");
+        ext_set(&g, EXT_IDLE_BATTERY, 2);
+        ext_set(&g, EXT_IDLE_STATION, 1440);
+        n_fn = 0;
+        ext_write(NULL, &g);
+        card_file("CFW/EXT/GLOBAL.TBS", buf, &n);
+        static const uint8_t gbody[] = {0x06, 1, 1, 0x0B, 2, 2, 0, 0x0C, 2, 0xA0, 0x05};
+        CHECK(n == 16 + sizeof gbody && !memcmp(buf + 12, gbody, sizeof gbody), "global: idle power-off minutes as 2-byte records");
+        CHECK(n_fn == 1 && (ext_le32(fn_args[0].data + 8) >> 17 & 3) == 3 && ext_le32(fn_args[0].data + 20) == (2u | 1440u << 16), "report: presence bits 17 and 18, minutes in the sixth number");
+        ext_settings_t back;
+        ext_parse_settings(buf, &back);
+        CHECK(ext_has(&back, EXT_IDLE_BATTERY) && back.value[EXT_IDLE_BATTERY] == 2 && back.value[EXT_IDLE_STATION] == 1440, "read back");
+        static const uint8_t gzero[] = {0x0B, 2, 0, 0, 0x0C, 2, 5, 0};
+        n = mk_tbs(buf, 3, 1, gzero, sizeof gzero);
+        ext_parse_settings(buf, &back);
+        CHECK(!ext_has(&back, EXT_IDLE_BATTERY) && back.value[EXT_IDLE_STATION] == 5, "0 minutes skipped as out of range");
+        static const uint8_t pidle[] = {0x0B, 2, 5, 0};
+        n = mk_tbs(buf, 1, 1, pidle, sizeof pidle);
+        ext_parse_settings(buf, &back);
+        CHECK(!ext_has(&back, EXT_IDLE_BATTERY), "not allowed in a profile");
         hello = false;
         n_fn = 0;
         ext_write(fig2, &s);
@@ -1145,6 +1164,38 @@ int main(int argc, char **argv)
     sprintf(want, "GET /v1/ota/3?cv=%u ", CFW_BUILD_TIME);
     CHECK(n_sent == 2 && !strncmp(sent[0], want, strlen(want)) && strstr(sent[1], "GET /v1/ota/7?cv=") == sent[1],
           "item 3 with the own build number, then item 7, once per start");
+
+    printf("E7 an incomplete freshness check session is made again, also in state 4, until one completes\n");
+    reset();
+    job_t left;
+    while (xQueueReceive(queue, &left, 0) == pdTRUE)
+    {
+    }
+    session_completed = retry_due = false;
+    retries = 0;
+    boot_time_reports = 0;
+    start_confirmed = false;
+    state = 4;
+    serve("HTTP/1.1 500 x\r\nContent-Length: 0\r\n\r\n", 0);
+    online_round(1);
+    CHECK(n_sent == 1 && retry_due && first_result != CE_OK && boot_time_reports == 0, "first session failed, a repetition due");
+    serve("HTTP/1.1 500 x\r\nContent-Length: 0\r\n\r\n", 0);
+    sim_ms += 59000;
+    maybe_sync();
+    CHECK(n_sent == 1, "nothing before 60 s");
+    sim_ms += 1000;
+    maybe_sync();
+    CHECK(n_sent == 2 && retry_due, "repeated after 60 s, failed again");
+    serve(ans, hl + sizeof body);
+    sim_ms += 119000;
+    maybe_sync();
+    CHECK(n_sent == 2, "the next one waits 120 s");
+    sim_ms += 1000;
+    maybe_sync();
+    CHECK(n_sent == 3 && !retry_due && boot_time_reports == 1, "complete: the start is confirmed, nothing more due");
+    sim_ms += 2000000;
+    maybe_sync();
+    CHECK(n_sent == 3, "no further session");
 
     unlink(q);
     full("cfw", q);

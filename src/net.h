@@ -36,6 +36,10 @@ bool net_handing_over(void);
  * the setup search. The caller drops it while shutting down. */
 void net_setup_request(void);
 
+/* The setup page asks for a new search: in setup mode the net activity
+ * closes the access point, searches again and opens it again. */
+void net_setup_rescan(void);
+
 /* An ear held alone for 3 s: true when the net activity takes
  * it (setup search: offline mode on; setup mode: ignored); false: a sync
  * request for the player. */

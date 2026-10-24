@@ -142,6 +142,7 @@ static void apply(void)
         }
     }
     ears_off = !has(&glob, EXT_BOTH_EARS) || glob.value[EXT_BOTH_EARS]; /* absent = on */
+    power_idle_minutes(glob.value[EXT_IDLE_BATTERY], glob.value[EXT_IDLE_STATION]);
     ears_combined = ev.on && ev.vol >= 0 && ev.led >= 0;
     if (!ev.on || (ev.vol < 0 && ev.led < 0))
     {
@@ -395,7 +396,7 @@ static bool in_scope(uint8_t a, ext_scope_t sc)
     {
         return a >= 1 && a <= 12 && a != 8 && a != 9;
     }
-    return a == 8 || a == 9 || (a >= 13 && a <= 16);
+    return a == 8 || a == 9 || (a >= 13 && a <= 18);
 }
 
 /* The record set to 1 (true) or removed by mode: toggle by the value t
@@ -422,7 +423,7 @@ static bool set_lock(ext_settings_t *s, ext_key_t k, uint8_t mode, bool in_effec
     return on;
 }
 
-/* actions 13 to 16 at the placement. */
+/* actions 13 to 18 at the placement. */
 static void global_actions(void)
 {
     ext_settings_t g;
@@ -435,12 +436,26 @@ static void global_actions(void)
     for (unsigned i = 0; i < ev.e.n; i++)
     {
         uint8_t a = ev.e.a[i].action, mode = ev.e.a[i].mode;
-        if (a < 13 || a > 16)
+        if (a < 13 || a > 18)
         {
             continue;
         }
         bool on;
-        if (a == 16)
+        if (a >= 17)
+        {
+            ext_key_t k = a == 17 ? EXT_IDLE_BATTERY : EXT_IDLE_STATION;
+            uint16_t minutes = ev.e.a[i].value;
+            on = minutes != 0;
+            if (on)
+            {
+                ext_set(&g, k, minutes);
+            }
+            else
+            {
+                ext_clear(&g, k);
+            }
+        }
+        else if (a == 16)
         {
             bool cur = !ext_has(&g, EXT_BOTH_EARS) || g.value[EXT_BOTH_EARS];
             on = set_lock(&g, EXT_BOTH_EARS, mode, cur);
@@ -528,7 +543,7 @@ static bool place_event(const uint8_t uid[8])
     {
         for (unsigned i = 0; i < e.n; i++)
         {
-            globals |= e.a[i].action >= 13 && e.a[i].action <= 16;
+            globals |= e.a[i].action >= 13 && e.a[i].action <= 18;
         }
     }
     apply();

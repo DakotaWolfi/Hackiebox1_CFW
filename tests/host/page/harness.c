@@ -169,6 +169,13 @@ void net_page_end(bool t)
     ends++;
     took += t;
 }
+static int rescans, rescan_answered;
+static int conn_answered(void);
+void net_setup_rescan(void)
+{
+    rescans++;
+    rescan_answered += conn_answered();
+}
 static setup_creds_t creds;
 static int submits;
 void net_setup_field(const uint8_t *n, unsigned nl, const uint8_t *v, unsigned vl)
@@ -338,6 +345,8 @@ static int conn(const char *req, size_t len)
     conns[n_conns].len = len ? len : strlen(req);
     return n_conns++;
 }
+/* the connection accepted last has its answer */
+static int conn_answered(void) { return next_conn > 0 && conns[next_conn - 1].out_len > 0; }
 /* The body of connection i's answer (after the head), "" when none. */
 static const char *body(int i)
 {
@@ -415,6 +424,7 @@ int main(int argc, char **argv)
     int c_rwifi = conn("POST /reset/wifi HTTP/1.1\r\nContent-Length: 0\r\n\r\n", 0);
     int c_rcontent = conn("POST /reset/content HTTP/1.1\r\nContent-Length: 0\r\n\r\n", 0);
     int c_rserver = conn("POST /reset/server HTTP/1.1\r\nContent-Length: 0\r\n\r\n", 0);
+    int c_rescan = conn("POST /rescan HTTP/1.1\r\nContent-Length: 0\r\n\r\n", 0);
 
     page_run(work, sizeof work, buf, sizeof buf);
     CHECK(ends == 2 && took == 1 && http_stops == 1, "served until setup mode ended; HTTP server stopped once");
@@ -452,6 +462,7 @@ int main(int argc, char **argv)
     CHECK(!strcmp(body(c_rwifi), "ok") && !strcmp(body(c_rcontent), "ok") && !strcmp(body(c_rserver), "ok") &&
               resets_wifi == 1 && resets_content == 1 && resets_server == 1,
           "POST /reset/wifi, /reset/content, /reset/server: each carried out once");
+    CHECK(!strcmp(body(c_rescan), "ok") && rescans == 1 && rescan_answered == 1, "POST /rescan: answered, then the new search asked for once");
 
     printf("P3 certificate answers\n");
     memset(conns, 0, sizeof conns);

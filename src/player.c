@@ -894,6 +894,11 @@ static bool shuffle_jump(unsigned t, bool back, const char *what)
     }
     shuf.index = (uint8_t)t;
     shuf.chap_end = chap_end(shuf.order[t]);
+    /* the end of the stream after the file's last chapter does not end the order */
+    if (st.decoding)
+    {
+        st.dead = false;
+    }
     return true;
 }
 

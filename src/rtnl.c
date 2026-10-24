@@ -785,6 +785,10 @@ static void commands(void)
     {
         cloud_sync_request(false);
     }
+    else if (c == 63)
+    {
+        ext_hello(); /* the log host speaks the extension protocol */
+    }
     else if (c >= 3 && c <= 5)
     {
         debug_verbose("rtnl: power cmd %u ignored\n", c);

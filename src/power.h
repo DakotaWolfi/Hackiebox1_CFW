@@ -30,6 +30,9 @@ bool power_shutting_down(void);
  * starts at the next check that finds the box idle and not in its update
  * round, also with a figure on the box. */
 void power_off_soon(void);
+/* The idle power-off time off and on the charging station in minutes;
+ * 0 = 10 minutes. */
+void power_idle_minutes(uint16_t battery, uint16_t station);
 /* The power-off of a critical battery is queued: it follows
  * sound prompt 9, before the figure on the box is evaluated again, so no
  * content starts meanwhile. */

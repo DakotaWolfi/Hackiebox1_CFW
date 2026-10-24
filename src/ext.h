@@ -28,12 +28,13 @@
 #define EXT_CAP_F11_EVENT_EXT (1u << 9) /* requires F4 */
 #define EXT_CAP_F12_REMOTE (1u << 10)
 #define EXT_CAP_F13_BATTERY (1u << 11)
-/* 0xFFF. F9 has no bit. F12 has no bit dependency; its
+#define EXT_CAP_F14_IDLE_TIMES (1u << 12)
+/* 0x1FFF. F9 has no bit. F12 has no bit dependency; its
  * commands 64 and 73 use ext_store() and cloud_remote_update_check()
  * (remote.c). */
 #define EXT_CAPS (EXT_CAP_F1_RESUME | EXT_CAP_F2_SHUFFLE | EXT_CAP_F3_SLEEP | EXT_CAP_F4_EVENT_TAGS | EXT_CAP_F5_RESTART | \
                   EXT_CAP_F6_PER_FIGURE | EXT_CAP_F8_FOREIGN | EXT_CAP_F7_GLOBAL | EXT_CAP_F10_LOCKS |                     \
-                  EXT_CAP_F11_EVENT_EXT | EXT_CAP_F12_REMOTE | EXT_CAP_F13_BATTERY)
+                  EXT_CAP_F11_EVENT_EXT | EXT_CAP_F12_REMOTE | EXT_CAP_F13_BATTERY | EXT_CAP_F14_IDLE_TIMES)
 
 /* --- protocol (called by the cloud activity) --- */
 
@@ -48,6 +49,9 @@ bool ext_store(const uint8_t *field, unsigned len);
 
 /* The hello of this start has been received. */
 bool ext_hello_received(void);
+/* The hello of the start: field 101 of a freshness check answer, or
+ * command 63 of the log host; the first one counts. */
+void ext_hello(void);
 /* The hello answer of this start has been generated: from
  * then on the battery reports follow. */
 bool ext_hello_answered(void);
@@ -90,6 +94,8 @@ typedef enum
     EXT_SLAP_LOCK = 0x08,
     EXT_TILT_LOCK = 0x09,
     EXT_VOLUME_LOCK = 0x0A,
+    EXT_IDLE_BATTERY = 0x0B, /* global only; idle power-off minutes, absent = 10 */
+    EXT_IDLE_STATION = 0x0C,
 } ext_key_t;
 
 /* A profile or the global file: value[k] of key k counts when bit k of
@@ -98,7 +104,7 @@ typedef struct
 {
     uint8_t kind;
     uint16_t present;
-    uint16_t value[11];
+    uint16_t value[13];
     uint32_t stamp;
 } ext_settings_t;
 
@@ -120,7 +126,7 @@ static inline void ext_clear(ext_settings_t *s, ext_key_t k)
 }
 
 /* An event tag file: the first 16 action records in their
- * order (any action number; the player gives 0 and 17 to 255 no effect). */
+ * order (any action number; the player gives 0 and 19 to 255 no effect). */
 typedef enum
 {
     EXT_TOGGLE = 0,
@@ -143,12 +149,12 @@ typedef struct
     {
         uint8_t action;
         uint8_t mode;   /* ext_mode_t */
-        uint16_t value; /* bits 0-13 of the parameter */
+        uint16_t value; /* bits 0-13 of the parameter; actions 17 and 18: all of it */
     } a[16];
     uint32_t stamp;
 } ext_event_t;
 
-/* The scope of an event tag: that of its first action 1 to 16. */
+/* The scope of an event tag: that of its first action 1 to 18. */
 ext_scope_t ext_event_scope(const ext_event_t *e);
 
 /* The tag's profile / event tag file, the global file; false when absent
@@ -177,7 +183,7 @@ void ext_parse_event(const uint8_t *f, ext_event_t *out);
 unsigned ext_build(uint8_t kind, uint32_t stamp, const ext_settings_t *s, uint8_t *out);
 
 /* The packed arguments 3 and 4 of the settings report. */
-void ext_pack_report(const ext_settings_t *s, uint32_t *packed, uint32_t *values);
+void ext_pack_report(const ext_settings_t *s, uint32_t *packed, uint32_t *values, uint32_t *idle);
 
 /* --- state file --- */
 

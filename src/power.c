@@ -49,6 +49,7 @@ static bool station_handled;
 static bool measure_next, low_battery, critical_announced;
 static uint32_t last_measure;
 static volatile uint32_t idle_since;
+static volatile uint16_t idle_minutes[2]; /* off, on the station; 0 = 10 */
 static bool critical_pending, was_busy;
 static uint32_t critical_at, off_soon_at;
 static volatile bool shutting_down, restart_requested, step4_begun, off_soon;
@@ -241,6 +242,18 @@ void power_off_soon(void)
     off_soon = true;
 }
 
+void power_idle_minutes(uint16_t battery, uint16_t station)
+{
+    idle_minutes[0] = battery;
+    idle_minutes[1] = station;
+}
+
+static uint32_t idle_limit_s(void)
+{
+    uint16_t minutes = idle_minutes[station_state];
+    return minutes ? 60u * minutes : 600u;
+}
+
 void power_ear_press(void)
 {
     power_activity();
@@ -411,9 +424,16 @@ static void __attribute__((noreturn)) restart_after_interruption(void)
     port_restart();
 }
 
-static void __attribute__((noreturn)) idle_power_off(void)
+static void __attribute__((noreturn)) idle_power_off(bool requested)
 {
-    debug_printf("pwr: idle off (%lu s)\n", (unsigned long)((tick_ms() - idle_since) / 1000));
+    if (requested)
+    {
+        debug_printf("pwr: off requested\n");
+    }
+    else
+    {
+        debug_printf("pwr: idle off (%lu s)\n", (unsigned long)((tick_ms() - idle_since) / 1000));
+    }
     shutting_down = true;
     panic_power_phase(PHASE_PREPARING_OFF);
     monitor_power_activity(true);
@@ -462,9 +482,9 @@ static void off_checks(void)
         power_activity(); /* the box became idle */
     }
     bool soon = off_soon && (int32_t)(now - off_soon_at) >= 500; /* power_off_soon() */
-    if (!monitor_in_update_round() && (soon || (now - idle_since) / 1000 > 600))
+    if (!monitor_in_update_round() && (soon || (now - idle_since) / 1000 > idle_limit_s()))
     {
-        idle_power_off();
+        idle_power_off(soon);
     }
 }
 

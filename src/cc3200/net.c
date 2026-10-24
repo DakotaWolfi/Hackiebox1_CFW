@@ -62,6 +62,7 @@ typedef enum
     EV_ERROR,
     EV_SHUTDOWN,
     EV_SETUP,
+    EV_RESCAN,
     EV_CLOUD_RESULT,
 } ev_t;
 
@@ -1069,6 +1070,17 @@ static void leave_setup(void)
     ledui_request(LED_CONFIRMATION);
 }
 
+/* A new search from setup mode, asked for by the setup page: station role
+ * without auto-connect, then the setup search opens the access point again. */
+static void rescan(void)
+{
+    debug_printf("net: setup rescan\n");
+    set_policy(false);
+    stop_services_or_restart();
+    role_station_restart(R_ROLE, "rescan");
+    setup_search();
+}
+
 /* The setup gesture and its order of checks. */
 static void setup_gesture(void)
 {
@@ -1374,6 +1386,12 @@ static void handle(const event_t *e)
     case EV_SETUP:
         setup_gesture();
         break;
+    case EV_RESCAN:
+        if (mode == M_SETUP && !going_down)
+        {
+            rescan();
+        }
+        break;
     case EV_SUBMIT:
         if (mode == M_SETUP && !player_busy() && !going_down)
         {
@@ -1474,6 +1492,11 @@ static void post_request(uint8_t kind, uint32_t ip, uint32_t info)
 void net_setup_request(void)
 {
     post_request(EV_SETUP, 0, 0);
+}
+
+void net_setup_rescan(void)
+{
+    post_request(EV_RESCAN, 0, 0);
 }
 
 bool net_sync_gesture(void)

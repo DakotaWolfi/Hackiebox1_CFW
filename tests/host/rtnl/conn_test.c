@@ -146,6 +146,8 @@ int16_t sl_Recv(int16_t s, void *b, int16_t n, int16_t f)
 static bool hello;
 static int remote_calls, remote_last_c, remote_last_n, remote_changed_flag, status_calls;
 bool ext_hello_received(void) { return hello; }
+static int hello_calls;
+void ext_hello(void) { hello_calls++; }
 uint8_t remote_command(uint8_t c, const uint8_t *arg, unsigned n)
 {
     (void)arg;
@@ -425,6 +427,17 @@ int main(void)
         run(25);
         CHECK((closes == cl) == frames[i].keep, "%s: connection %s", frames[i].what, closes == cl ? "kept" : "closed");
     }
+
+    /* command 63: the hello of the log host */
+    run(40);
+    wlen = 0;
+    static const uint8_t hello63[] = {0, 0, 0, 6, 0x08, 0x3F};
+    cmd(hello63, sizeof hello63);
+    int cl63 = closes;
+    run(25);
+    n = walk(wire, wlen, recs, 4000);
+    CHECK(hello_calls == 1 && closes == cl63 && find_fn(n, 37, 6739) >= 0,
+          "command 63: the hello, acknowledged as an unknown command, connection kept");
     wlen = 0;
 
     /* 5: records buffered while disconnected; the first function frame in

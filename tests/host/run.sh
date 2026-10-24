@@ -46,12 +46,22 @@ $B/player_test $X "0S,0P,5000R,0K,8000R,0P,12000R" | grep "$KEY\|start position"
 echo "== EXT F2 shuffle and F6 speaker limit 4"
 xcard; python3 $T/player/tbs.py $X profile $F shuffle=1 spk=4
 $B/player_test $X "0S,0P,3000R,0P,6000F,8000B,80000R" | grep "$KEY\|limits 4"; python3 $T/player/tbs.py $X showstate
+echo "== EXT F2 shuffle: a chapter after the file's last chapter is heard, the order ends the playback"
+xcard; tail -c +4097 "$TAF" > $B/x.ogg && python3 tools/taftest/mktaf.py $B/x.ogg $X/CONTENT/B706EE0E/500304E0 0x00c0ffee 0,9,18,27
+python3 $T/player/tbs.py $X profile $F shuffle=1 resume=1; python3 $T/player/tbs.py $X state $F 0x00c0ffee 0 0x178edd10 1 4 1
+$B/player_test $X "0S,0P,60000R" | grep "shuffle\|pl: end at" | tee $B/shuffle.log
+[ "$(grep -c "shuffle, chapter 3\|shuffle, chapter 1" $B/shuffle.log)" = 2 ] && grep -q "shuffle done" $B/shuffle.log || { echo "FAIL: shuffle order"; exit 1; }
+[ "$(grep "shuffle, chapter 3" $B/shuffle.log | cut -c2-7)" != "$(grep "shuffle, chapter 1" $B/shuffle.log | cut -c2-7)" ] || { echo "FAIL: chapter 3 silent after the last chapter"; exit 1; }
 echo "== EXT F4 event tag for the next figure (resume, shuffle on, sleep 20, slap lock), twice"
 xcard; python3 $T/player/tbs.py $X event $E 1:0:0 2:1:0 3:0:20 10:0:0
 for i in 1 2; do $B/player_test $X "0S,0Q,1000R,0P,3000R" | grep "written\|feedback"; python3 $T/player/tbs.py $X show $F; done
 echo "== EXT F11 global tag: slap lock, volume (start 6) and LED level with the ears, combined"
 xcard; python3 $T/player/tbs.py $X event $E 13:0:0 9:0:6 8:0:0
 $B/player_test $X "0S,0Q,0U,0U,0U,0H,0L,0L,0H,0R" | grep "$KEY"; python3 $T/player/tbs.py $X show global
+echo "== EXT F14 global tag: idle power-off 1440 min on the station, then back to 10 min on battery"
+xcard; python3 $T/player/tbs.py $X global idlebat=30
+python3 $T/player/tbs.py $X event $E 18:0:1440 17:0:0
+$B/player_test $X "0S,0Q,1000R" | grep "written\|feedback"; python3 $T/player/tbs.py $X show global
 echo "== EXT F4 values set with the ears for the next figure (5, 6), F5 restart gesture"
 xcard; python3 $T/player/tbs.py $X event $E 5:0:12 6:0:2
 $B/player_test $X "0S,0Q,0U,0U,0H,0L,0R,0P,2000T,5000R" | grep "$KEY"; python3 $T/player/tbs.py $X show $F

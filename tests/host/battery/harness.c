@@ -149,8 +149,35 @@ static void run(uint32_t ms)
     }
 }
 
-int main(void)
+/* idle power-off after the minutes set for battery and station (0 = 10) */
+static int idle_case(uint16_t battery, uint16_t on_station, bool on)
 {
+    power_start(NULL);
+    power_idle_minutes(battery, on_station);
+    station = on;
+    if (on)
+    {
+        power_station_event(true);
+    }
+    uint32_t start = sim_ms;
+    if (!setjmp(off))
+    {
+        run(25u * 3600 * 1000);
+    }
+    uint32_t s = (sim_ms - start) / 1000;
+    uint32_t want = 60u * ((on ? on_station : battery) ? (on ? on_station : battery) : 10) + 1;
+    CHECK(went_off && s >= want && s <= want + 1, "%s, minutes %u/%u: off after %u s (%u expected)",
+          on ? "on the station" : "on battery", battery, on_station, s, want);
+    printf("%d failure(s)\n", failures);
+    return failures != 0;
+}
+
+int main(int argc, char **argv)
+{
+    if (argc == 5 && !strcmp(argv[1], "idle"))
+    {
+        return idle_case((uint16_t)atoi(argv[2]), (uint16_t)atoi(argv[3]), atoi(argv[4]));
+    }
     printf("B1 start before the hello: no report; at the hello the last measurement (reason 0)\n");
     power_start(NULL);
     run(5000);

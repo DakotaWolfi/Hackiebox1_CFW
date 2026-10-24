@@ -25,6 +25,8 @@
  *                        sound prompts, the trash and the extension's
  *                        files; /cfw/config.txt with its CA file
  *                        (the page asks first)
+ *   POST /rescan         a new search for networks: answered first, then
+ *                        the access point closes for the search
  *   POST /cert/0, /cert/1, /cert/2
  *                        private.der, client.der, ca.der as the raw body,
  *                        checked and stored in the flash
@@ -281,9 +283,18 @@ static void handle(int16_t s, uint8_t *work, unsigned wn, char *buf, unsigned bn
         {
             res = cloud_server_forget();
         }
+        else if (!strcmp(p, "/rescan"))
+        {
+            res = "ok";
+        }
     }
+    bool rescan = !strcmp(res, "ok") && !strcmp(p, "/rescan");
     debug_printf("page: %s -> %s\n", p, res);
     reply(s, buf, "plain", res);
+    if (rescan)
+    {
+        net_setup_rescan(); /* after the answer: the search ends this page server */
+    }
 }
 
 void page_run(uint8_t *work, unsigned wn, char *buf, unsigned bn)
