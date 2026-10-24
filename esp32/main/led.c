@@ -1,6 +1,6 @@
 /*
- * LED PWM: red GPIO19, green GPIO18,
- * blue GPIO17, active high, on the LEDC peripheral at 8 bits.
+ * LED PWM: red GPIO17, green GPIO18,
+ * blue GPIO40, active high, on the LEDC peripheral at 8 bits.
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
@@ -9,7 +9,7 @@
 #include "driver/ledc.h"
 #include "led.h"
 
-static const int pins[3] = {19, 18, 17};
+static const int pins[3] = {17, 18, 40};
 static bool ready;
 
 void led_init(void)

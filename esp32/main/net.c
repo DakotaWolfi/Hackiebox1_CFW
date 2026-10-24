@@ -123,6 +123,8 @@ static uint32_t ready_at;
 static profile_t profiles[7];
 static bool connecting;
 static uint32_t next_try;
+static uint32_t setup_auto_at;
+static bool setup_auto_done;
 static int dns_sock = -1;
 
 uint8_t net_state(void)
@@ -638,6 +640,12 @@ static void startup(void)
     if (!n)
     {
         set_state(1, "no profile");
+        setup_auto_at = tick_ms() + 3000;
+        setup_auto_done = false;
+    }
+    else
+    {
+        setup_auto_done = true;
     }
     wifi_up(WIFI_MODE_STA);
     debug_printf("net: up, MAC %02x:%02x:%02x:%02x:%02x:%02x, %u profiles%s\n", mac[0], mac[1], mac[2], mac[3],
@@ -1065,6 +1073,12 @@ static void task(void *arg)
         if (mode == M_SETUP)
         {
             dns_poll();
+        }
+        if (!going_down && !setup_auto_done && mode == M_STATION && !offline && !profile_count() && state == 1 &&
+            (int32_t)(tick_ms() - setup_auto_at) >= 0)
+        {
+            setup_auto_done = true;
+            setup_search();
         }
         if (!going_down && running && mode == M_STATION && !connecting && state < 3 &&
             (int32_t)(tick_ms() - next_try) >= 0)

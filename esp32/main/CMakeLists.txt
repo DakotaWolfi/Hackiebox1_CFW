@@ -25,6 +25,7 @@ idf_component_register(
                  ${IDF_PATH}/components/freertos/FreeRTOS-Kernel/include/freertos
     PRIV_REQUIRES esp_wifi esp_netif esp_event nvs_flash app_update esp_partition spi_flash
                   wear_levelling mbedtls lwip driver esp_adc esp_timer esp_app_format esp_driver_i2s
+                  esp_psram
                   esp_driver_spi esp_driver_i2c esp_driver_gpio esp_driver_ledc esp_driver_sdmmc sdmmc
     EMBED_FILES ${CMAKE_CURRENT_BINARY_DIR}/setup.htm)
 

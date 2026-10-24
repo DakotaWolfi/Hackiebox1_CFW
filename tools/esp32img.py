@@ -28,7 +28,7 @@ import time
 
 MAGIC = 0xE9
 CHIP_ESP32S3 = 9
-SLOT = 0x220000
+SLOT = 0x360000
 APP_DESC_MAGIC = 0xABCD5432
 MARKER = b"CFWSRV" + b"01"  # never one literal: this file may end up in an image search
 PROJECT_CFW = "toniebox-cfw-esp32"
@@ -144,8 +144,8 @@ def check(d):
         problems.append("chip ID %d, not 9 (ESP32-S3)" % chip)
     if d[2] != 2:
         problems.append("flash mode %d, not DIO" % d[2])
-    if d[3] >> 4 != 3:  # 8 MB
-        problems.append("flash size code %d, not 8 MB" % (d[3] >> 4))
+    if d[3] >> 4 != 4:  # 16 MB
+        problems.append("flash size code %d, not 16 MB" % (d[3] >> 4))
     if d[3] & 15 != 0xF:  # 80 MHz
         problems.append("flash frequency code %d, not 80 MHz" % (d[3] & 15))
     if d[23] != 1:

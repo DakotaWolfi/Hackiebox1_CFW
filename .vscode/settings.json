@@ -1,3 +1,6 @@
 {
-    "cmake.sourceDirectory": "C:/Users/Dakota/git/Hackiebox1_CFW/esp32"
+    "cmake.sourceDirectory": "C:/Users/Dakota/git/Hackiebox1_CFW/esp32",
+    "idf.flashType": "UART",
+    "idf.currentSetup": "C:\\esp\\v5.4.2\\esp-idf",
+    "idf.port": "COM10"
 }

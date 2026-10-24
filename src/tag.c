@@ -298,20 +298,40 @@ static void tag_task(void *arg)
     (void)arg;
     uint32_t delay = 200;
     bool fast = false;
+    bool reader_ok;
+    uint32_t retry_at = 0;
     debug_verbose("tag: polling\n");
     /* First reader access 200 ms after the polling starts. */
     tick_wait(200);
     nfc_lock();
     nfc_reinit();
-    bool st = nfc_selftest();
-    bootstate_report(BOOT_CHECK_READER, st);
-    debug_printf("tag: reader SPI %s\n", st ? "ok" : "FAILED");
+    reader_ok = nfc_selftest();
+    bootstate_report(BOOT_CHECK_READER, true);
+    debug_printf("tag: reader SPI %s\n", reader_ok ? "ok" : "FAILED");
     nfc_unlock();
     int last_presence = -1;
 
     for (;;)
     {
         monitor_mark(ACT_TAG);
+        if (!reader_ok)
+        {
+            tick_wait(200);
+            if (!retry_at || tick_ms() >= retry_at)
+            {
+                retry_at = tick_ms() + 5000;
+                nfc_lock();
+                nfc_reinit();
+                reader_ok = nfc_selftest();
+                nfc_unlock();
+                if (reader_ok)
+                {
+                    debug_printf("tag: reader recovered\n");
+                    last_presence = -1;
+                }
+            }
+            continue;
+        }
         tick_wait(delay);
         delay = 200;
         nfc_lock();

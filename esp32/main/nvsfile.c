@@ -16,7 +16,7 @@
 #include "esp32.h"
 
 #define NS "cfw"
-#define MAX_FILE 1024
+#define MAX_FILE 4096
 
 static nvs_handle_t h;
 static bool ready;
@@ -24,6 +24,14 @@ static bool ready;
 bool nvsfile_init(void)
 {
     esp_err_t e = nvs_flash_init_partition("nvs");
+    if (e == ESP_ERR_NVS_NO_FREE_PAGES || e == ESP_ERR_NVS_NEW_VERSION_FOUND)
+    {
+        debug_printf("nvs: partition requires erase (%d), reinitializing\n", e);
+        if (nvs_flash_erase_partition("nvs") == ESP_OK)
+        {
+            e = nvs_flash_init_partition("nvs");
+        }
+    }
     if (e == ESP_OK)
     {
         e = nvs_open(NS, NVS_READWRITE, &h);

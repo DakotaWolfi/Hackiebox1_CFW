@@ -16,6 +16,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <string.h>
+#include <strings.h>
 #include "esp32.h"
 #include "flashfs.h"
 #include "port.h"
@@ -31,6 +32,21 @@ static kind_t kind(const char *name, char *mapped, size_t n)
 {
     if (!strncmp(name, "/cert/", 6))
     {
+        if (!strcasecmp(name + 6, "ca.der"))
+        {
+            strcpy(mapped, "cert_ca");
+            return F_NVS;
+        }
+        if (!strcasecmp(name + 6, "client.der"))
+        {
+            strcpy(mapped, "cert_client");
+            return F_NVS;
+        }
+        if (!strcasecmp(name + 6, "private.der"))
+        {
+            strcpy(mapped, "cert_private");
+            return F_NVS;
+        }
         if (strlen(name + 6) + 4 >= n)
         {
             return F_NONE;

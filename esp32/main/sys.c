@@ -116,9 +116,9 @@ static void __attribute__((noreturn)) deep_sleep(uint64_t timer_us)
     }
     else if (on_charger)
     {
-        esp_sleep_enable_ext1_wakeup_io((1ull << GPIO_NUM_20) | (1ull << GPIO_NUM_21), ESP_EXT1_WAKEUP_ANY_LOW);
-        rtc_gpio_pullup_en(GPIO_NUM_20);
-        rtc_gpio_pullup_en(GPIO_NUM_21);
+        esp_sleep_enable_ext1_wakeup_io((1ull << GPIO_NUM_7) | (1ull << GPIO_NUM_8), ESP_EXT1_WAKEUP_ANY_LOW);
+        rtc_gpio_pullup_en(GPIO_NUM_7);
+        rtc_gpio_pullup_en(GPIO_NUM_8);
     }
     else
     {

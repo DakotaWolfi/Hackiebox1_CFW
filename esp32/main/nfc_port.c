@@ -21,8 +21,8 @@ void nfc_port_init(void)
 {
     spi_bus_config_t b = {
         .mosi_io_num = 2,
-        .miso_io_num = 3,
-        .sclk_io_num = 4,
+        .miso_io_num = 38,
+        .sclk_io_num = 39,
         .quadwp_io_num = -1,
         .quadhd_io_num = -1,
         .max_transfer_sz = 32,

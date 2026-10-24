@@ -46,7 +46,7 @@
 #define PROJECT_CFW "toniebox-cfw-esp32"
 #define PROJECT_OFW "toniebox-esp32-eu"
 #define NONE 0xFF
-#define SLOT_SIZE 0x220000u
+#define SLOT_SIZE 0x360000u
 #define DIGEST_TEXT 64u
 
 typedef struct

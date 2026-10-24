@@ -1,12 +1,11 @@
-# The partition table of every ESP32 box, at 0x9000. The
-# firmware never writes it; the build needs it for the offsets of otadata and
-# the app slots. The flash from 0x171000 to 0x17FFFF lies outside any partition.
+# Standalone ESP32-S3 partition table for 16 MB flash.
 # Name,   Type, SubType,  Offset,   Size
-phy_init, data, phy,      0xa000,   0x1000
-nvs,      data, nvs,      0xb000,   0x4000
-assets,   data, fat,      0xf000,   0x160000
-otadata,  data, ota,      0x16f000, 0x2000
-ota_0,    app,  ota_0,    0x180000, 0x220000
-ota_1,    app,  ota_1,    0x3a0000, 0x220000
-ota_2,    app,  ota_2,    0x5c0000, 0x220000
-coredump, data, coredump, 0x7e0000, 0x20000
+nvs,      data, nvs,      0x10000,  0x10000
+otadata,  data, ota,      0x20000,  0x2000
+phy_init, data, phy,      0x22000,  0x1000
+assets,   data, fat,      0x30000,  0x200000
+ota_0,    app,  ota_0,    0x230000, 0x360000
+ota_1,    app,  ota_1,    0x590000, 0x360000
+ota_2,    app,  ota_2,    0x8f0000, 0x360000
+coredump, data, coredump, 0xc50000, 0x20000
+userdata, data, fat,      0xc70000, 0x390000

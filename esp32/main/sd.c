@@ -1,7 +1,6 @@
 /*
- * SD card on the SDMMC host of the ESP32-S3, 4-bit bus: CLK GPIO35, CMD
- * GPIO38, DAT0 GPIO36, DAT1 GPIO37, DAT2 GPIO33, DAT3 GPIO34 (wiki
- * pinout); supply GPIO47, shared with the NFC reader. The card rules of the
+ * SD card on the SDMMC host of the ESP32-S3, 1-bit bus: CLK GPIO41, CMD
+ * GPIO42, DAT0 GPIO47; supply GPIO21, shared with the NFC reader. The card rules of the
  * CC3200 box keep their meaning: identification with bus recoveries for up to 20 s
  * at start, a failed transfer is followed by a bus recovery and
  * one repetition, a second failure in the system area is a panic, in the
@@ -42,13 +41,13 @@ void sd_host_init(void)
         return;
     }
     sdmmc_slot_config_t s = SDMMC_SLOT_CONFIG_DEFAULT();
-    s.width = 4;
-    s.clk = GPIO_NUM_35;
-    s.cmd = GPIO_NUM_38;
-    s.d0 = GPIO_NUM_36;
-    s.d1 = GPIO_NUM_37;
-    s.d2 = GPIO_NUM_33;
-    s.d3 = GPIO_NUM_34;
+    s.width = 1;
+    s.clk = GPIO_NUM_41;
+    s.cmd = GPIO_NUM_42;
+    s.d0 = GPIO_NUM_47;
+    s.d1 = GPIO_NUM_NC;
+    s.d2 = GPIO_NUM_NC;
+    s.d3 = GPIO_NUM_NC;
     s.flags = SDMMC_SLOT_FLAG_INTERNAL_PULLUP;
     if (sdmmc_host_init_slot(SDMMC_HOST_SLOT_1, &s) != ESP_OK)
     {
